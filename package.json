@@ -1,6 +1,6 @@
 {
   "name": "mcp-memory-libsql",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "LibSQL-based persistent memory tool for MCP",
   "type": "module",
   "main": "dist/index.js",
@@ -8,6 +8,11 @@
   "bin": {
     "mcp-memory-libsql": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/spences10/mcp-memory-libsql"
