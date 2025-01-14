@@ -1,0 +1,35 @@
+{
+  "name": "libsql-memory",
+  "version": "0.0.1",
+  "description": "LibSQL-based persistent memory tool for MCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "libsql-memory": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "start": "node dist/index.js",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "test": "jest",
+    "migrate": "node --loader ts-node/esm src/db/migrations/run.ts",
+    "prepare": "pnpm run build"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "@modelcontextprotocol/sdk": "1.1.1",
+    "@types/node": "^22.10.6",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "volta": {
+    "node": "22.13.0"
+  }
+}
