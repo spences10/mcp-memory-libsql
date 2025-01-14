@@ -125,15 +125,6 @@ pnpm changeset version
 pnpm release
 ```
 
-### npm Tags
-
-This package is tagged with:
-- `mcp`: Model Context Protocol server
-- `memory`: Memory/knowledge management
-- `vector`: Vector search capabilities
-- `libsql`: SQL database integration
-- `knowledge-graph`: Graph-based knowledge storage
-
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting pull requests.

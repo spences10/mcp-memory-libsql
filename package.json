@@ -21,6 +21,17 @@
     "url": "https://github.com/spences10/mcp-memory-libsql/issues"
   },
   "homepage": "https://github.com/spences10/mcp-memory-libsql#readme",
+  "keywords": [
+    "mcp",
+    "memory",
+    "vector",
+    "libsql",
+    "knowledge-graph",
+    "database",
+    "vector-search",
+    "semantic-search",
+    "knowledge-management"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
