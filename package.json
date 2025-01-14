@@ -1,20 +1,31 @@
 {
-  "name": "libsql-memory",
+  "name": "mcp-memory-libsql",
   "version": "0.0.1",
   "description": "LibSQL-based persistent memory tool for MCP",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "libsql-memory": "./dist/index.js"
+    "mcp-memory-libsql": "./dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spences10/mcp-memory-libsql"
+  },
+  "bugs": {
+    "url": "https://github.com/spences10/mcp-memory-libsql/issues"
+  },
+  "homepage": "https://github.com/spences10/mcp-memory-libsql#readme",
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
     "dev": "node --loader ts-node/esm src/index.ts",
     "test": "jest",
     "migrate": "node --loader ts-node/esm src/db/migrations/run.ts",
-    "prepare": "pnpm run build"
+    "prepare": "pnpm run build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm run build && changeset publish"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
@@ -23,6 +34,7 @@
     "dotenv": "^16.4.7"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.11",
     "@types/jest": "^29.5.14",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
