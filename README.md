@@ -122,7 +122,7 @@ pnpm changeset version
 
 3. Publish to npm (will prompt for 2FA code):
 ```bash
-pnpm publish
+pnpm release
 ```
 
 ### npm Tags
