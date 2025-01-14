@@ -11,102 +11,77 @@ A high-performance, persistent memory system for the Model Context Protocol (MCP
 - 🌐 Compatible with local and remote libSQL databases
 - 🔒 Secure token-based authentication for remote databases
 
-## Installation
+## Configuration
 
-```bash
-npm install mcp-memory-libsql
-```
+This server is designed to be used as part of an MCP configuration. Here are examples for different environments:
 
-Or with pnpm:
+### Cline Configuration
 
-```bash
-pnpm add mcp-memory-libsql
-```
-
-## Usage
-
-### Starting the Server
-
-You can start the server using npx:
-
-```bash
-npx mcp-memory-libsql
-```
-
-### Configuration
-
-The server can be configured by passing environment variables when starting the server:
-
-```bash
-# For a local SQLite database:
-LIBSQL_URL=file:/path/to/your/database.db npx mcp-memory-libsql
-
-# For a remote libSQL database (e.g., Turso):
-LIBSQL_URL=libsql://your-database.turso.io LIBSQL_AUTH_TOKEN=your-auth-token npx mcp-memory-libsql
-```
-
-By default, if no URL is provided, it will use `file:/memory-tool.db` in the current directory.
-
-### Claude Desktop Configuration
-
-Add this to your Claude Desktop configuration:
+Add this to your Cline MCP settings:
 
 ```json
 {
 	"mcpServers": {
-		"memory": {
+		"mcp-memory-libsql": {
 			"command": "npx",
-			"args": ["-y", "mcp-memory-libsql"]
+			"args": ["-y", "mcp-memory-libsql"],
+			"env": {
+				"LIBSQL_URL": "file:/path/to/your/database.db"
+			}
 		}
 	}
 }
 ```
 
-## Development
+### Claude Desktop with WSL Configuration
 
-### Prerequisites
+For a detailed guide on setting up this server with Claude Desktop in WSL, see [Getting MCP Server Working with Claude Desktop in WSL](https://scottspence.com/posts/getting-mcp-server-working-with-claude-desktop-in-wsl).
 
-- Node.js 22.13.0 or higher
-- pnpm (recommended) or npm
+Add this to your Claude Desktop configuration for WSL environments:
 
-### Setup
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/yourusername/mcp-memory-libsql.git
-cd mcp-memory-libsql
+```json
+{
+	"mcpServers": {
+		"mcp-memory-libsql": {
+			"command": "wsl.exe",
+			"args": [
+				"bash",
+				"-c",
+				"source ~/.nvm/nvm.sh && LIBSQL_URL=file:/path/to/database.db /home/username/.nvm/versions/node/v20.12.1/bin/npx mcp-memory-libsql"
+			]
+		}
+	}
+}
 ```
 
-2. Install dependencies:
+### Database Configuration
 
-```bash
-pnpm install
+The server supports both local SQLite and remote libSQL databases through the LIBSQL_URL environment variable:
+
+For local SQLite databases:
+
+```json
+{
+	"env": {
+		"LIBSQL_URL": "file:/path/to/database.db"
+	}
+}
 ```
 
-3. Run database migrations:
+For remote libSQL databases (e.g., Turso):
 
-```bash
-pnpm run migrate
+```json
+{
+	"env": {
+		"LIBSQL_URL": "libsql://your-database.turso.io",
+		"LIBSQL_AUTH_TOKEN": "your-auth-token"
+	}
+}
 ```
 
-4. Build the project:
+Note: When using WSL, ensure the database path uses the Linux filesystem format (e.g., `/home/username/...`) rather than Windows format.
 
-```bash
-pnpm run build
-```
-
-### Running Tests
-
-```bash
-pnpm test
-```
-
-### Development Mode
-
-```bash
-pnpm run dev
-```
+By default, if no URL is provided, it will use `file:/memory-tool.db` in the current directory.
 
 ## API
 
