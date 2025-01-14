@@ -104,6 +104,36 @@ The server uses a libSQL database with the following schema:
 - Relations table: Stores relationships between entities
 - Vector search capabilities implemented using libSQL's built-in vector operations
 
+## Development
+
+### Publishing
+
+Due to npm 2FA requirements, publishing needs to be done manually:
+
+1. Create a changeset (documents your changes):
+```bash
+pnpm changeset
+```
+
+2. Version the package (updates version and CHANGELOG):
+```bash
+pnpm changeset version
+```
+
+3. Publish to npm (will prompt for 2FA code):
+```bash
+pnpm publish
+```
+
+### npm Tags
+
+This package is tagged with:
+- `mcp`: Model Context Protocol server
+- `memory`: Memory/knowledge management
+- `vector`: Vector search capabilities
+- `libsql`: SQL database integration
+- `knowledge-graph`: Graph-based knowledge storage
+
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
