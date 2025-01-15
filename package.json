@@ -1,6 +1,6 @@
 {
   "name": "mcp-memory-libsql",
-  "version": "0.0.5",
+  "version": "0.0.8",
   "description": "LibSQL-based persistent memory tool for MCP",
   "type": "module",
   "main": "dist/index.js",
@@ -21,6 +21,17 @@
     "url": "https://github.com/spences10/mcp-memory-libsql/issues"
   },
   "homepage": "https://github.com/spences10/mcp-memory-libsql#readme",
+  "keywords": [
+    "mcp",
+    "memory",
+    "vector",
+    "libsql",
+    "knowledge-graph",
+    "database",
+    "vector-search",
+    "semantic-search",
+    "knowledge-management"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",

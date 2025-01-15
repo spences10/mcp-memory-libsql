@@ -29,8 +29,19 @@ export class DatabaseManager {
     return DatabaseManager.instance;
   }
 
-  // Convert array to vector string representation
-  private arrayToVectorString(numbers: number[]): string {
+  // Convert array to vector string representation with validation
+  private arrayToVectorString(numbers: number[] | undefined): string | null {
+    if (!numbers || !Array.isArray(numbers)) {
+      return null;
+    }
+    // Validate vector dimensions match schema (4 dimensions for testing)
+    if (numbers.length !== 4) {
+      throw new Error(`Vector must have exactly 4 dimensions, got ${numbers.length}`);
+    }
+    // Validate all elements are numbers
+    if (!numbers.every(n => typeof n === 'number' && !isNaN(n))) {
+      throw new Error('Vector must contain only valid numbers');
+    }
     return `[${numbers.join(', ')}]`;
   }
 
@@ -60,7 +71,7 @@ export class DatabaseManager {
         args: [
           entity.name,
           entity.entityType,
-          entity.embedding ? this.arrayToVectorString(entity.embedding) : null
+          this.arrayToVectorString(entity.embedding)
         ],
       });
 

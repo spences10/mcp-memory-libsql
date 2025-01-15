@@ -1,5 +1,7 @@
 # mcp-memory-libsql
 
+[![smithery badge](https://smithery.ai/badge/mcp-memory-libsql)](https://smithery.ai/server/mcp-memory-libsql)
+
 A high-performance, persistent memory system for the Model Context Protocol (MCP) powered by libSQL. This server provides vector search capabilities and efficient knowledge storage using libSQL as the backing store.
 
 ## Features
@@ -103,6 +105,27 @@ The server uses a libSQL database with the following schema:
 - Entities table: Stores entity information and embeddings
 - Relations table: Stores relationships between entities
 - Vector search capabilities implemented using libSQL's built-in vector operations
+
+## Development
+
+### Publishing
+
+Due to npm 2FA requirements, publishing needs to be done manually:
+
+1. Create a changeset (documents your changes):
+```bash
+pnpm changeset
+```
+
+2. Version the package (updates version and CHANGELOG):
+```bash
+pnpm changeset version
+```
+
+3. Publish to npm (will prompt for 2FA code):
+```bash
+pnpm release
+```
 
 ## Contributing
 
