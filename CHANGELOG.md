@@ -1,5 +1,11 @@
 # mcp-memory-libsql
 
+## 0.0.12
+
+### Patch Changes
+
+- feat: Implement delete_entity and delete_relation functionalities
+
 ## 0.0.11
 
 ### Patch Changes
