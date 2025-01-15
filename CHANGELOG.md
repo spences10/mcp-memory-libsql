@@ -1,5 +1,11 @@
 # mcp-memory-libsql
 
+## 0.0.10
+
+### Patch Changes
+
+- 33d8232: update server info
+
 ## 0.0.9
 
 ### Patch Changes
