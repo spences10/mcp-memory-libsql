@@ -1,5 +1,11 @@
 # mcp-memory-libsql
 
+## 0.0.13
+
+### Patch Changes
+
+- c48fb84: feat: Enhance entity processing in DatabaseManager
+
 ## 0.0.12
 
 ### Patch Changes
