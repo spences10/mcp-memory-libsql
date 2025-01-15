@@ -8,6 +8,7 @@ import {
 	ListToolsRequestSchema,
 	McpError,
 } from '@modelcontextprotocol/sdk/types.js';
+import { name, version } from '../package.json';
 import { DatabaseManager } from './db/client.js';
 import { get_database_config } from './db/config.js';
 import { Relation } from './types/index.js';
@@ -18,13 +19,15 @@ class LibSqlMemoryServer {
 
 	private constructor() {
 		this.server = new Server(
-			{
-				name: 'libsql-memory',
-				version: '0.1.0',
-			},
+			{ name, version },
 			{
 				capabilities: {
-					tools: {},
+					tools: {
+						create_entities: {},
+						search_nodes: {},
+						read_graph: {},
+						create_relations: {},
+					},
 				},
 			},
 		);
