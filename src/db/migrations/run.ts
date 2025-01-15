@@ -1,6 +1,6 @@
-import { DatabaseManager } from "../client.js";
-import { get_database_config } from "../config.js";
-import { schema } from "./schema.js";
+import { DatabaseManager } from '../client.js';
+import { get_database_config } from '../config.js';
+import { schema } from './schema.js';
 
 async function run_migrations() {
 	const config = get_database_config();
@@ -8,16 +8,16 @@ async function run_migrations() {
 	const db = db_manager.get_client();
 
 	try {
-		console.log("Starting migrations...");
+		console.log('Starting migrations...');
 
 		for (const migration of schema) {
 			console.log(`Executing: ${migration.slice(0, 50)}...`);
 			await db.execute(migration);
 		}
 
-		console.log("Migrations completed successfully");
+		console.log('Migrations completed successfully');
 	} catch (error) {
-		console.error("Error running migrations:", error);
+		console.error('Error running migrations:', error);
 		throw error;
 	}
 }

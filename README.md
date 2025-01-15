@@ -2,7 +2,10 @@
 
 [![smithery badge](https://smithery.ai/badge/mcp-memory-libsql)](https://smithery.ai/server/mcp-memory-libsql)
 
-A high-performance, persistent memory system for the Model Context Protocol (MCP) powered by libSQL. This server provides vector search capabilities and efficient knowledge storage using libSQL as the backing store.
+A high-performance, persistent memory system for the Model Context
+Protocol (MCP) powered by libSQL. This server provides vector search
+capabilities and efficient knowledge storage using libSQL as the
+backing store.
 
 <a href="https://glama.ai/mcp/servers/22lg4lq768">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/22lg4lq768/badge" alt="Glama badge" />
@@ -19,7 +22,8 @@ A high-performance, persistent memory system for the Model Context Protocol (MCP
 
 ## Configuration
 
-This server is designed to be used as part of an MCP configuration. Here are examples for different environments:
+This server is designed to be used as part of an MCP configuration.
+Here are examples for different environments:
 
 ### Cline Configuration
 
@@ -41,7 +45,9 @@ Add this to your Cline MCP settings:
 
 ### Claude Desktop with WSL Configuration
 
-For a detailed guide on setting up this server with Claude Desktop in WSL, see [Getting MCP Server Working with Claude Desktop in WSL](https://scottspence.com/posts/getting-mcp-server-working-with-claude-desktop-in-wsl).
+For a detailed guide on setting up this server with Claude Desktop in
+WSL, see
+[Getting MCP Server Working with Claude Desktop in WSL](https://scottspence.com/posts/getting-mcp-server-working-with-claude-desktop-in-wsl).
 
 Add this to your Claude Desktop configuration for WSL environments:
 
@@ -62,7 +68,8 @@ Add this to your Claude Desktop configuration for WSL environments:
 
 ### Database Configuration
 
-The server supports both local SQLite and remote libSQL databases through the LIBSQL_URL environment variable:
+The server supports both local SQLite and remote libSQL databases
+through the LIBSQL_URL environment variable:
 
 For local SQLite databases:
 
@@ -85,13 +92,17 @@ For remote libSQL databases (e.g., Turso):
 }
 ```
 
-Note: When using WSL, ensure the database path uses the Linux filesystem format (e.g., `/home/username/...`) rather than Windows format.
+Note: When using WSL, ensure the database path uses the Linux
+filesystem format (e.g., `/home/username/...`) rather than Windows
+format.
 
-By default, if no URL is provided, it will use `file:/memory-tool.db` in the current directory.
+By default, if no URL is provided, it will use `file:/memory-tool.db`
+in the current directory.
 
 ## API
 
-The server implements the standard MCP memory interface with additional vector search capabilities:
+The server implements the standard MCP memory interface with
+additional vector search capabilities:
 
 - Entity Management
   - Create/Update entities with embeddings
@@ -108,7 +119,8 @@ The server uses a libSQL database with the following schema:
 
 - Entities table: Stores entity information and embeddings
 - Relations table: Stores relationships between entities
-- Vector search capabilities implemented using libSQL's built-in vector operations
+- Vector search capabilities implemented using libSQL's built-in
+  vector operations
 
 ## Development
 
@@ -136,7 +148,8 @@ pnpm release
 
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
+Contributions are welcome! Please read our contributing guidelines
+before submitting pull requests.
 
 ## License
 
@@ -144,5 +157,6 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- Built on the [Model Context Protocol](https://github.com/modelcontextprotocol)
+- Built on the
+  [Model Context Protocol](https://github.com/modelcontextprotocol)
 - Powered by [libSQL](https://github.com/tursodatabase/libsql)

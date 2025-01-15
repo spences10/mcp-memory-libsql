@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
 	CallToolRequest,
 	CallToolRequestSchema,
 	ErrorCode,
 	ListToolsRequestSchema,
 	McpError,
-} from "@modelcontextprotocol/sdk/types.js";
-import { DatabaseManager } from "./db/client.js";
-import { get_database_config } from "./db/config.js";
-import { Relation } from "./types/index.js";
+} from '@modelcontextprotocol/sdk/types.js';
+import { DatabaseManager } from './db/client.js';
+import { get_database_config } from './db/config.js';
+import { Relation } from './types/index.js';
 
 class LibSqlMemoryServer {
 	private server: Server;
@@ -19,19 +19,20 @@ class LibSqlMemoryServer {
 	private constructor() {
 		this.server = new Server(
 			{
-				name: "libsql-memory",
-				version: "0.1.0",
+				name: 'libsql-memory',
+				version: '0.1.0',
 			},
 			{
 				capabilities: {
 					tools: {},
 				},
-			}
+			},
 		);
 
 		// Error handling
-		this.server.onerror = (error: Error) => console.error("[MCP Error]", error);
-		process.on("SIGINT", async () => {
+		this.server.onerror = (error: Error) =>
+			console.error('[MCP Error]', error);
+		process.on('SIGINT', async () => {
 			await this.db?.close();
 			await this.server.close();
 			process.exit(0);
@@ -47,102 +48,109 @@ class LibSqlMemoryServer {
 	}
 
 	private setup_tool_handlers() {
-		this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-			tools: [
-				{
-					name: "create_entities",
-					description:
-						"Create new entities with observations and optional embeddings",
-					inputSchema: {
-						type: "object",
-						properties: {
-							entities: {
-								type: "array",
-								items: {
-									type: "object",
-									properties: {
-										name: { type: "string" },
-										entityType: { type: "string" },
-										observations: {
-											type: "array",
-											items: { type: "string" },
+		this.server.setRequestHandler(
+			ListToolsRequestSchema,
+			async () => ({
+				tools: [
+					{
+						name: 'create_entities',
+						description:
+							'Create new entities with observations and optional embeddings',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								entities: {
+									type: 'array',
+									items: {
+										type: 'object',
+										properties: {
+											name: { type: 'string' },
+											entityType: { type: 'string' },
+											observations: {
+												type: 'array',
+												items: { type: 'string' },
+											},
+											embedding: {
+												type: 'array',
+												items: { type: 'number' },
+												description:
+													'Optional vector embedding for similarity search',
+											},
 										},
-										embedding: {
-											type: "array",
-											items: { type: "number" },
-											description:
-												"Optional vector embedding for similarity search",
-										},
+										required: ['name', 'entityType', 'observations'],
 									},
-									required: ["name", "entityType", "observations"],
 								},
 							},
+							required: ['entities'],
 						},
-						required: ["entities"],
 					},
-				},
-				{
-					name: "search_nodes",
-					description:
-						"Search for entities and their relations using text or vector similarity",
-					inputSchema: {
-						type: "object",
-						properties: {
-							query: {
-								oneOf: [
-									{ type: "string", description: "Text search query" },
-									{
-										type: "array",
-										items: { type: "number" },
-										description: "Vector for similarity search",
-									},
-								],
-							},
-						},
-						required: ["query"],
-					},
-				},
-				{
-					name: "read_graph",
-					description: "Get recent entities and their relations",
-					inputSchema: {
-						type: "object",
-						properties: {},
-						required: [],
-					},
-				},
-				{
-					name: "create_relations",
-					description: "Create relations between entities",
-					inputSchema: {
-						type: "object",
-						properties: {
-							relations: {
-								type: "array",
-								items: {
-									type: "object",
-									properties: {
-										source: { type: "string" },
-										target: { type: "string" },
-										type: { type: "string" },
-									},
-									required: ["source", "target", "type"],
+					{
+						name: 'search_nodes',
+						description:
+							'Search for entities and their relations using text or vector similarity',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								query: {
+									oneOf: [
+										{
+											type: 'string',
+											description: 'Text search query',
+										},
+										{
+											type: 'array',
+											items: { type: 'number' },
+											description: 'Vector for similarity search',
+										},
+									],
 								},
 							},
+							required: ['query'],
 						},
-						required: ["relations"],
 					},
-				},
-			],
-		}));
+					{
+						name: 'read_graph',
+						description: 'Get recent entities and their relations',
+						inputSchema: {
+							type: 'object',
+							properties: {},
+							required: [],
+						},
+					},
+					{
+						name: 'create_relations',
+						description: 'Create relations between entities',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								relations: {
+									type: 'array',
+									items: {
+										type: 'object',
+										properties: {
+											source: { type: 'string' },
+											target: { type: 'string' },
+											type: { type: 'string' },
+										},
+										required: ['source', 'target', 'type'],
+									},
+								},
+							},
+							required: ['relations'],
+						},
+					},
+				],
+			}),
+		);
 
 		this.server.setRequestHandler(
 			CallToolRequestSchema,
 			async (request: CallToolRequest) => {
 				try {
 					switch (request.params.name) {
-						case "create_entities": {
-							const entities = request.params.arguments?.entities as Array<{
+						case 'create_entities': {
+							const entities = request.params.arguments
+								?.entities as Array<{
 								name: string;
 								entityType: string;
 								observations: string[];
@@ -151,60 +159,63 @@ class LibSqlMemoryServer {
 							if (!entities) {
 								throw new McpError(
 									ErrorCode.InvalidParams,
-									"Missing entities parameter"
+									'Missing entities parameter',
 								);
 							}
 							await this.db.create_entities(entities);
 							return {
 								content: [
 									{
-										type: "text",
+										type: 'text',
 										text: `Created ${entities.length} entities`,
 									},
 								],
 							};
 						}
 
-						case "search_nodes": {
+						case 'search_nodes': {
 							const query = request.params.arguments?.query;
 							if (query === undefined || query === null) {
 								throw new McpError(
 									ErrorCode.InvalidParams,
-									"Missing query parameter"
+									'Missing query parameter',
 								);
 							}
 							// Validate query type
-							if (!(typeof query === "string" || Array.isArray(query))) {
+							if (
+								!(typeof query === 'string' || Array.isArray(query))
+							) {
 								throw new McpError(
 									ErrorCode.InvalidParams,
-									"Query must be either a string or number array"
+									'Query must be either a string or number array',
 								);
 							}
 							const result = await this.db.search_nodes(query);
 							return {
 								content: [
 									{
-										type: "text",
+										type: 'text',
 										text: JSON.stringify(result, null, 2),
 									},
 								],
 							};
 						}
 
-						case "read_graph": {
+						case 'read_graph': {
 							const result = await this.db.read_graph();
 							return {
 								content: [
 									{
-										type: "text",
+										type: 'text',
 										text: JSON.stringify(result, null, 2),
 									},
 								],
 							};
 						}
 
-						case "create_relations": {
-							const relations = request.params.arguments?.relations as Array<{
+						case 'create_relations': {
+							const relations = request.params.arguments
+								?.relations as Array<{
 								source: string;
 								target: string;
 								type: string;
@@ -212,20 +223,22 @@ class LibSqlMemoryServer {
 							if (!relations) {
 								throw new McpError(
 									ErrorCode.InvalidParams,
-									"Missing relations parameter"
+									'Missing relations parameter',
 								);
 							}
 							// Convert to internal Relation type
-							const internalRelations: Relation[] = relations.map((r) => ({
-								from: r.source,
-								to: r.target,
-								relationType: r.type,
-							}));
+							const internalRelations: Relation[] = relations.map(
+								(r) => ({
+									from: r.source,
+									to: r.target,
+									relationType: r.type,
+								}),
+							);
 							await this.db.create_relations(internalRelations);
 							return {
 								content: [
 									{
-										type: "text",
+										type: 'text',
 										text: `Created ${relations.length} relations`,
 									},
 								],
@@ -235,24 +248,24 @@ class LibSqlMemoryServer {
 						default:
 							throw new McpError(
 								ErrorCode.MethodNotFound,
-								`Unknown tool: ${request.params.name}`
+								`Unknown tool: ${request.params.name}`,
 							);
 					}
 				} catch (error) {
 					if (error instanceof McpError) throw error;
 					throw new McpError(
 						ErrorCode.InternalError,
-						error instanceof Error ? error.message : String(error)
+						error instanceof Error ? error.message : String(error),
 					);
 				}
-			}
+			},
 		);
 	}
 
 	async run() {
 		const transport = new StdioServerTransport();
 		await this.server.connect(transport);
-		console.error("LibSQL Memory MCP server running on stdio");
+		console.error('LibSQL Memory MCP server running on stdio');
 	}
 }
 
