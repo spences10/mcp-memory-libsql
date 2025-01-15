@@ -1,5 +1,12 @@
 # mcp-memory-libsql
 
+## 0.0.11
+
+### Patch Changes
+
+- 82289b4: feat: Enhance DatabaseManager with improved validation and
+  error handling
+
 ## 0.0.10
 
 ### Patch Changes
