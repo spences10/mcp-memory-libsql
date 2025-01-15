@@ -4,6 +4,10 @@
 
 A high-performance, persistent memory system for the Model Context Protocol (MCP) powered by libSQL. This server provides vector search capabilities and efficient knowledge storage using libSQL as the backing store.
 
+<a href="https://glama.ai/mcp/servers/22lg4lq768">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/22lg4lq768/badge" alt="Glama badge" />
+</a>
+
 ## Features
 
 - 🚀 High-performance vector search using libSQL
@@ -113,16 +117,19 @@ The server uses a libSQL database with the following schema:
 Due to npm 2FA requirements, publishing needs to be done manually:
 
 1. Create a changeset (documents your changes):
+
 ```bash
 pnpm changeset
 ```
 
 2. Version the package (updates version and CHANGELOG):
+
 ```bash
 pnpm changeset version
 ```
 
 3. Publish to npm (will prompt for 2FA code):
+
 ```bash
 pnpm release
 ```
