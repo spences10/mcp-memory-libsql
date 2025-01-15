@@ -219,7 +219,7 @@ class LibSqlMemoryServer {
 								content: [
 									{
 										type: 'text',
-										text: `Created ${entities.length} entities`,
+										text: `Successfully processed ${entities.length} entities (created new or updated existing)`,
 									},
 								],
 							};

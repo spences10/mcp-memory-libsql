@@ -124,26 +124,46 @@ export class DatabaseManager {
 					);
 				}
 
-				// Insert entity with vector32 conversion and proper error handling
+				await this.client.execute('BEGIN TRANSACTION');
+
 				try {
+					// Check if entity exists
+					const existing = await this.client.execute({
+						sql: 'SELECT name, entity_type FROM entities WHERE name = ?',
+						args: [entity.name],
+					});
+
 					const vector_string = this.array_to_vector_string(
 						entity.embedding,
 					);
-					await this.client.execute({
-						sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
-						args: [entity.name, entity.entityType, vector_string],
-					});
 
-					// Insert observations
+					if (existing.rows.length > 0) {
+						// Update existing entity
+						await this.client.execute({
+							sql: 'UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?',
+							args: [entity.entityType, vector_string, entity.name],
+						});
+					} else {
+						// Insert new entity
+						await this.client.execute({
+							sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
+							args: [entity.name, entity.entityType, vector_string],
+						});
+					}
+
+					// Add new observations
 					for (const observation of entity.observations) {
 						await this.client.execute({
 							sql: 'INSERT INTO observations (entity_name, content) VALUES (?, ?)',
 							args: [entity.name, observation],
 						});
 					}
+
+					await this.client.execute('COMMIT');
 				} catch (error) {
+					await this.client.execute('ROLLBACK');
 					throw new Error(
-						`Failed to create entity "${entity.name}": ${
+						`Failed to create/update entity "${entity.name}": ${
 							error instanceof Error ? error.message : String(error)
 						}`,
 					);
@@ -152,7 +172,7 @@ export class DatabaseManager {
 		} catch (error) {
 			// Wrap all errors with context
 			throw new Error(
-				`Entity creation failed: ${
+				`Entity operation failed: ${
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
