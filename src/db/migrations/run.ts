@@ -1,35 +1,35 @@
 import { DatabaseManager } from "../client.js";
-import { getDatabaseConfig } from "../config.js";
+import { get_database_config } from "../config.js";
 import { schema } from "./schema.js";
 
-async function runMigrations() {
-  const config = getDatabaseConfig();
-  const dbManager = await DatabaseManager.getInstance(config);
-  const db = dbManager.getClient();
+async function run_migrations() {
+	const config = get_database_config();
+	const db_manager = await DatabaseManager.get_instance(config);
+	const db = db_manager.get_client();
 
-  try {
-    console.log("Starting migrations...");
+	try {
+		console.log("Starting migrations...");
 
-    for (const migration of schema) {
-      console.log(`Executing: ${migration.slice(0, 50)}...`);
-      await db.execute(migration);
-    }
+		for (const migration of schema) {
+			console.log(`Executing: ${migration.slice(0, 50)}...`);
+			await db.execute(migration);
+		}
 
-    console.log("Migrations completed successfully");
-  } catch (error) {
-    console.error("Error running migrations:", error);
-    throw error;
-  }
+		console.log("Migrations completed successfully");
+	} catch (error) {
+		console.error("Error running migrations:", error);
+		throw error;
+	}
 }
 
 // Run migrations if this file is executed directly
 if (require.main === module) {
-  runMigrations()
-    .then(() => process.exit(0))
-    .catch((error) => {
-      console.error(error);
-      process.exit(1);
-    });
+	run_migrations()
+		.then(() => process.exit(0))
+		.catch((error) => {
+			console.error(error);
+			process.exit(1);
+		});
 }
 
-export { runMigrations };
+export { run_migrations };

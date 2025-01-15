@@ -1,11 +1,11 @@
 import { DatabaseConfig } from "./client.js";
 
-export function getDatabaseConfig(): DatabaseConfig {
+export function get_database_config(): DatabaseConfig {
 	const url = process.env.LIBSQL_URL || "file:./memory-tool.db";
-	const authToken = process.env.LIBSQL_AUTH_TOKEN;
+	const auth_token = process.env.LIBSQL_AUTH_TOKEN;
 
 	return {
 		url,
-		authToken,
+		authToken: auth_token,
 	};
 }
