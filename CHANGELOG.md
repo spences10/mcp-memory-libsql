@@ -1,5 +1,13 @@
 # mcp-memory-libsql
 
+## 0.0.9
+
+### Patch Changes
+
+- 7652e39: - update server config
+  - snek case
+  - formatting
+
 ## 0.0.8
 
 ### Patch Changes
