@@ -8,10 +8,19 @@ import {
 	ListToolsRequestSchema,
 	McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { name, version } from '../package.json';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { DatabaseManager } from './db/client.js';
 import { get_database_config } from './db/config.js';
 import { Relation } from './types/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const pkg = JSON.parse(
+	readFileSync(join(__dirname, '..', 'package.json'), 'utf8'),
+);
+const { name, version } = pkg;
 
 class LibSqlMemoryServer {
 	private server: Server;

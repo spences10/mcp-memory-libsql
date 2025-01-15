@@ -34,21 +34,31 @@ export class DatabaseManager {
 	// Convert array to vector string representation with validation
 	private array_to_vector_string(
 		numbers: number[] | undefined,
-	): string | null {
+	): string {
+		// If no embedding provided, create a default zero vector
 		if (!numbers || !Array.isArray(numbers)) {
-			return null;
+			return '[0.0, 0.0, 0.0, 0.0]';
 		}
+
 		// Validate vector dimensions match schema (4 dimensions for testing)
 		if (numbers.length !== 4) {
 			throw new Error(
-				`Vector must have exactly 4 dimensions, got ${numbers.length}`,
+				`Vector must have exactly 4 dimensions, got ${numbers.length}. Please provide a 4D vector or omit for default zero vector.`,
 			);
 		}
-		// Validate all elements are numbers
-		if (!numbers.every((n) => typeof n === 'number' && !isNaN(n))) {
-			throw new Error('Vector must contain only valid numbers');
-		}
-		return `[${numbers.join(', ')}]`;
+
+		// Validate all elements are numbers and convert NaN/Infinity to 0
+		const sanitized_numbers = numbers.map((n) => {
+			if (typeof n !== 'number' || isNaN(n) || !isFinite(n)) {
+				console.warn(
+					`Invalid vector value detected, using 0.0 instead of: ${n}`,
+				);
+				return 0.0;
+			}
+			return n;
+		});
+
+		return `[${sanitized_numbers.join(', ')}]`;
 	}
 
 	// Extract vector from binary format
@@ -72,24 +82,80 @@ export class DatabaseManager {
 			embedding?: number[];
 		}>,
 	): Promise<void> {
-		for (const entity of entities) {
-			// Insert entity with vector32 conversion
-			await this.client.execute({
-				sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
-				args: [
-					entity.name,
-					entity.entityType,
-					this.array_to_vector_string(entity.embedding),
-				],
-			});
+		try {
+			for (const entity of entities) {
+				// Validate entity name
+				if (
+					!entity.name ||
+					typeof entity.name !== 'string' ||
+					entity.name.trim() === ''
+				) {
+					throw new Error('Entity name must be a non-empty string');
+				}
 
-			// Insert observations
-			for (const observation of entity.observations) {
-				await this.client.execute({
-					sql: 'INSERT INTO observations (entity_name, content) VALUES (?, ?)',
-					args: [entity.name, observation],
-				});
+				// Validate entity type
+				if (
+					!entity.entityType ||
+					typeof entity.entityType !== 'string' ||
+					entity.entityType.trim() === ''
+				) {
+					throw new Error(
+						`Invalid entity type for entity "${entity.name}"`,
+					);
+				}
+
+				// Validate observations
+				if (
+					!Array.isArray(entity.observations) ||
+					entity.observations.length === 0
+				) {
+					throw new Error(
+						`Entity "${entity.name}" must have at least one observation`,
+					);
+				}
+
+				if (
+					!entity.observations.every(
+						(obs) => typeof obs === 'string' && obs.trim() !== '',
+					)
+				) {
+					throw new Error(
+						`Entity "${entity.name}" has invalid observations. All observations must be non-empty strings`,
+					);
+				}
+
+				// Insert entity with vector32 conversion and proper error handling
+				try {
+					const vector_string = this.array_to_vector_string(
+						entity.embedding,
+					);
+					await this.client.execute({
+						sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
+						args: [entity.name, entity.entityType, vector_string],
+					});
+
+					// Insert observations
+					for (const observation of entity.observations) {
+						await this.client.execute({
+							sql: 'INSERT INTO observations (entity_name, content) VALUES (?, ?)',
+							args: [entity.name, observation],
+						});
+					}
+				} catch (error) {
+					throw new Error(
+						`Failed to create entity "${entity.name}": ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				}
 			}
+		} catch (error) {
+			// Wrap all errors with context
+			throw new Error(
+				`Entity creation failed: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
 	}
 
@@ -97,45 +163,73 @@ export class DatabaseManager {
 		embedding: number[],
 		limit: number = 5,
 	): Promise<SearchResult[]> {
-		// Use vector_top_k to find similar entities
-		const results = await this.client.execute({
-			sql: `
-        SELECT e.name, e.entity_type, e.embedding,
-               vector_distance_cos(e.embedding, vector32(?)) as distance
-        FROM entities e
-        WHERE e.embedding IS NOT NULL
-        ORDER BY distance ASC
-        LIMIT ?
-      `,
-			args: [this.array_to_vector_string(embedding), limit],
-		});
+		try {
+			// Validate input vector
+			if (!Array.isArray(embedding)) {
+				throw new Error('Search embedding must be an array');
+			}
 
-		// Get observations for each entity
-		const search_results: SearchResult[] = [];
-		for (const row of results.rows) {
-			const observations = await this.client.execute({
-				sql: 'SELECT content FROM observations WHERE entity_name = ?',
-				args: [row.name],
+			const vector_string = this.array_to_vector_string(embedding);
+
+			// Use vector_top_k to find similar entities, excluding zero vectors
+			const results = await this.client.execute({
+				sql: `
+					SELECT e.name, e.entity_type, e.embedding,
+						   vector_distance_cos(e.embedding, vector32(?)) as distance
+					FROM entities e
+					WHERE e.embedding IS NOT NULL
+					AND e.embedding != vector32('[0.0, 0.0, 0.0, 0.0]')
+					ORDER BY distance ASC
+					LIMIT ?
+				`,
+				args: [vector_string, limit],
 			});
 
-			const entity_embedding = await this.extract_vector(
-				row.embedding as Uint8Array,
+			// Get observations for each entity
+			const search_results: SearchResult[] = [];
+			for (const row of results.rows) {
+				try {
+					const observations = await this.client.execute({
+						sql: 'SELECT content FROM observations WHERE entity_name = ?',
+						args: [row.name],
+					});
+
+					const entity_embedding = await this.extract_vector(
+						row.embedding as Uint8Array,
+					);
+
+					search_results.push({
+						entity: {
+							name: row.name as string,
+							entityType: row.entity_type as string,
+							observations: observations.rows.map(
+								(obs) => obs.content as string,
+							),
+							embedding: entity_embedding,
+						},
+						distance: row.distance as number,
+					});
+				} catch (error) {
+					console.warn(
+						`Failed to process search result for entity "${
+							row.name
+						}": ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					// Continue processing other results
+					continue;
+				}
+			}
+
+			return search_results;
+		} catch (error) {
+			throw new Error(
+				`Similarity search failed: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
 			);
-
-			search_results.push({
-				entity: {
-					name: row.name as string,
-					entityType: row.entity_type as string,
-					observations: observations.rows.map(
-						(obs) => obs.content as string,
-					),
-					embedding: entity_embedding,
-				},
-				distance: row.distance as number,
-			});
 		}
-
-		return search_results;
 	}
 
 	async get_entity(name: string): Promise<Entity> {
@@ -286,19 +380,45 @@ export class DatabaseManager {
 	async search_nodes(
 		query: string | number[],
 	): Promise<{ entities: Entity[]; relations: Relation[] }> {
-		let entities: Entity[];
+		try {
+			let entities: Entity[];
 
-		if (Array.isArray(query)) {
-			// Vector similarity search
-			const results = await this.search_similar(query);
-			entities = results.map((r) => r.entity);
-		} else {
-			// Text-based search
-			entities = await this.search_entities(query);
+			if (Array.isArray(query)) {
+				// Validate vector query
+				if (!query.every((n) => typeof n === 'number')) {
+					throw new Error('Vector query must contain only numbers');
+				}
+				// Vector similarity search
+				const results = await this.search_similar(query);
+				entities = results.map((r) => r.entity);
+			} else {
+				// Validate text query
+				if (typeof query !== 'string') {
+					throw new Error('Text query must be a string');
+				}
+				if (query.trim() === '') {
+					throw new Error('Text query cannot be empty');
+				}
+				// Text-based search
+				entities = await this.search_entities(query);
+			}
+
+			// If no entities found, return empty result
+			if (entities.length === 0) {
+				return { entities: [], relations: [] };
+			}
+
+			const relations = await this.get_relations_for_entities(
+				entities,
+			);
+			return { entities, relations };
+		} catch (error) {
+			throw new Error(
+				`Node search failed: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-
-		const relations = await this.get_relations_for_entities(entities);
-		return { entities, relations };
 	}
 
 	// Database operations
