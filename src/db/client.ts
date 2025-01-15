@@ -340,6 +340,73 @@ export class DatabaseManager {
 		}
 	}
 
+	async delete_entity(name: string): Promise<void> {
+		try {
+			// Start a transaction
+			await this.client.execute('BEGIN TRANSACTION');
+
+			try {
+				// Delete associated observations first (due to foreign key)
+				await this.client.execute({
+					sql: 'DELETE FROM observations WHERE entity_name = ?',
+					args: [name],
+				});
+
+				// Delete associated relations (due to foreign key)
+				await this.client.execute({
+					sql: 'DELETE FROM relations WHERE source = ? OR target = ?',
+					args: [name, name],
+				});
+
+				// Delete the entity
+				const result = await this.client.execute({
+					sql: 'DELETE FROM entities WHERE name = ?',
+					args: [name],
+				});
+
+				if (result.rowsAffected === 0) {
+					throw new Error(`Entity not found: ${name}`);
+				}
+
+				await this.client.execute('COMMIT');
+			} catch (error) {
+				await this.client.execute('ROLLBACK');
+				throw error;
+			}
+		} catch (error) {
+			throw new Error(
+				`Failed to delete entity "${name}": ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+
+	async delete_relation(
+		source: string,
+		target: string,
+		type: string,
+	): Promise<void> {
+		try {
+			const result = await this.client.execute({
+				sql: 'DELETE FROM relations WHERE source = ? AND target = ? AND relation_type = ?',
+				args: [source, target, type],
+			});
+
+			if (result.rowsAffected === 0) {
+				throw new Error(
+					`Relation not found: ${source} -> ${target} (${type})`,
+				);
+			}
+		} catch (error) {
+			throw new Error(
+				`Failed to delete relation: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+
 	async get_relations_for_entities(
 		entities: Entity[],
 	): Promise<Relation[]> {

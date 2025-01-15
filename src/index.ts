@@ -36,6 +36,8 @@ class LibSqlMemoryServer {
 						search_nodes: {},
 						read_graph: {},
 						create_relations: {},
+						delete_entity: {},
+						delete_relation: {},
 					},
 				},
 			},
@@ -151,6 +153,44 @@ class LibSqlMemoryServer {
 							required: ['relations'],
 						},
 					},
+					{
+						name: 'delete_entity',
+						description:
+							'Delete an entity and all its associated data (observations and relations)',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								name: {
+									type: 'string',
+									description: 'Name of the entity to delete',
+								},
+							},
+							required: ['name'],
+						},
+					},
+					{
+						name: 'delete_relation',
+						description:
+							'Delete a specific relation between entities',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								source: {
+									type: 'string',
+									description: 'Source entity name',
+								},
+								target: {
+									type: 'string',
+									description: 'Target entity name',
+								},
+								type: {
+									type: 'string',
+									description: 'Type of relation',
+								},
+							},
+							required: ['source', 'target', 'type'],
+						},
+					},
 				],
 			}),
 		);
@@ -252,6 +292,52 @@ class LibSqlMemoryServer {
 									{
 										type: 'text',
 										text: `Created ${relations.length} relations`,
+									},
+								],
+							};
+						}
+
+						case 'delete_entity': {
+							const name = request.params.arguments?.name;
+							if (!name || typeof name !== 'string') {
+								throw new McpError(
+									ErrorCode.InvalidParams,
+									'Missing or invalid entity name',
+								);
+							}
+							await this.db.delete_entity(name);
+							return {
+								content: [
+									{
+										type: 'text',
+										text: `Successfully deleted entity "${name}" and its associated data`,
+									},
+								],
+							};
+						}
+
+						case 'delete_relation': {
+							const { source, target, type } =
+								request.params.arguments || {};
+							if (
+								!source ||
+								!target ||
+								!type ||
+								typeof source !== 'string' ||
+								typeof target !== 'string' ||
+								typeof type !== 'string'
+							) {
+								throw new McpError(
+									ErrorCode.InvalidParams,
+									'Missing or invalid relation parameters',
+								);
+							}
+							await this.db.delete_relation(source, target, type);
+							return {
+								content: [
+									{
+										type: 'text',
+										text: `Successfully deleted relation: ${source} -> ${target} (${type})`,
 									},
 								],
 							};
