@@ -1,5 +1,12 @@
 # mcp-memory-libsql
 
+## 0.0.14
+
+### Patch Changes
+
+- 1e6b152: Refactor DatabaseManager for improved transaction handling
+  and batch operations
+
 ## 0.0.13
 
 ### Patch Changes
