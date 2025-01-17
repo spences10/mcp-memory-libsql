@@ -124,49 +124,46 @@ export class DatabaseManager {
 					);
 				}
 
-				await this.client.execute('BEGIN TRANSACTION');
-
+				// Start a transaction
+				const txn = await this.client.transaction('write');
+				
 				try {
-					// Check if entity exists
-					const existing = await this.client.execute({
-						sql: 'SELECT name, entity_type FROM entities WHERE name = ?',
-						args: [entity.name],
-					});
-
 					const vector_string = this.array_to_vector_string(
 						entity.embedding,
 					);
 
-					if (existing.rows.length > 0) {
-						// Update existing entity
-						await this.client.execute({
-							sql: 'UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?',
-							args: [entity.entityType, vector_string, entity.name],
-						});
-					} else {
-						// Insert new entity
-						await this.client.execute({
+					// First try to update
+					const result = await txn.execute({
+						sql: 'UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?',
+						args: [entity.entityType, vector_string, entity.name],
+					});
+
+					// If no rows affected, do insert
+					if (result.rowsAffected === 0) {
+						await txn.execute({
 							sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
 							args: [entity.name, entity.entityType, vector_string],
 						});
 					}
 
+					// Clear old observations
+					await txn.execute({
+						sql: 'DELETE FROM observations WHERE entity_name = ?',
+						args: [entity.name],
+					});
+
 					// Add new observations
 					for (const observation of entity.observations) {
-						await this.client.execute({
+						await txn.execute({
 							sql: 'INSERT INTO observations (entity_name, content) VALUES (?, ?)',
 							args: [entity.name, observation],
 						});
 					}
 
-					await this.client.execute('COMMIT');
+					await txn.commit();
 				} catch (error) {
-					await this.client.execute('ROLLBACK');
-					throw new Error(
-						`Failed to create/update entity "${entity.name}": ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
+					await txn.rollback();
+					throw error;
 				}
 			}
 		} catch (error) {
@@ -352,47 +349,59 @@ export class DatabaseManager {
 
 	// Relation operations
 	async create_relations(relations: Relation[]): Promise<void> {
-		for (const relation of relations) {
-			await this.client.execute({
+		try {
+			if (relations.length === 0) return;
+
+			// Prepare batch statements for all relations
+			const batch_statements = relations.map((relation) => ({
 				sql: 'INSERT INTO relations (source, target, relation_type) VALUES (?, ?, ?)',
 				args: [relation.from, relation.to, relation.relationType],
-			});
+			}));
+
+			// Execute all inserts in a single batch transaction
+			await this.client.batch(batch_statements, 'write');
+		} catch (error) {
+			throw new Error(
+				`Failed to create relations: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
 	}
 
 	async delete_entity(name: string): Promise<void> {
 		try {
-			// Start a transaction
-			await this.client.execute('BEGIN TRANSACTION');
+			// Check if entity exists first
+			const existing = await this.client.execute({
+				sql: 'SELECT name FROM entities WHERE name = ?',
+				args: [name],
+			});
 
-			try {
-				// Delete associated observations first (due to foreign key)
-				await this.client.execute({
+			if (existing.rows.length === 0) {
+				throw new Error(`Entity not found: ${name}`);
+			}
+
+			// Prepare batch statements for deletion
+			const batch_statements = [
+				{
+					// Delete associated observations first (due to foreign key)
 					sql: 'DELETE FROM observations WHERE entity_name = ?',
 					args: [name],
-				});
-
-				// Delete associated relations (due to foreign key)
-				await this.client.execute({
+				},
+				{
+					// Delete associated relations (due to foreign key)
 					sql: 'DELETE FROM relations WHERE source = ? OR target = ?',
 					args: [name, name],
-				});
-
-				// Delete the entity
-				const result = await this.client.execute({
+				},
+				{
+					// Delete the entity
 					sql: 'DELETE FROM entities WHERE name = ?',
 					args: [name],
-				});
+				},
+			];
 
-				if (result.rowsAffected === 0) {
-					throw new Error(`Entity not found: ${name}`);
-				}
-
-				await this.client.execute('COMMIT');
-			} catch (error) {
-				await this.client.execute('ROLLBACK');
-				throw error;
-			}
+			// Execute all deletions in a single batch transaction
+			await this.client.batch(batch_statements, 'write');
 		} catch (error) {
 			throw new Error(
 				`Failed to delete entity "${name}": ${
@@ -514,46 +523,72 @@ export class DatabaseManager {
 	}
 
 	public async initialize() {
-		// Create tables if they don't exist
-		await this.client.execute(`
-      CREATE TABLE IF NOT EXISTS entities (
-        name TEXT PRIMARY KEY,
-        entity_type TEXT NOT NULL,
-        embedding F32_BLOB(4), -- 4-dimension vector for testing
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+		try {
+			// Create tables if they don't exist - each as a single statement
+			await this.client.execute(`
+				CREATE TABLE IF NOT EXISTS entities (
+					name TEXT PRIMARY KEY,
+					entity_type TEXT NOT NULL,
+					embedding F32_BLOB(4), -- 4-dimension vector for testing
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+				)
+			`);
 
-		await this.client.execute(`
-      CREATE TABLE IF NOT EXISTS observations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        entity_name TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (entity_name) REFERENCES entities(name)
-      )
-    `);
+			await this.client.execute(`
+				CREATE TABLE IF NOT EXISTS observations (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					entity_name TEXT NOT NULL,
+					content TEXT NOT NULL,
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (entity_name) REFERENCES entities(name)
+				)
+			`);
 
-		await this.client.execute(`
-      CREATE TABLE IF NOT EXISTS relations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source TEXT NOT NULL,
-        target TEXT NOT NULL,
-        relation_type TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (source) REFERENCES entities(name),
-        FOREIGN KEY (target) REFERENCES entities(name)
-      )
-    `);
+			await this.client.execute(`
+				CREATE TABLE IF NOT EXISTS relations (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					source TEXT NOT NULL,
+					target TEXT NOT NULL,
+					relation_type TEXT NOT NULL,
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (source) REFERENCES entities(name),
+					FOREIGN KEY (target) REFERENCES entities(name)
+				)
+			`);
 
-		// Create indexes
-		await this.client.execute(`
-      CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
-      CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_name);
-      CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source);
-      CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target);
-      CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding));
-    `);
+			// Create all indexes in a single batch transaction
+			await this.client.batch(
+				[
+					{
+						sql: 'CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)',
+						args: [],
+					},
+					{
+						sql: 'CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_name)',
+						args: [],
+					},
+					{
+						sql: 'CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source)',
+						args: [],
+					},
+					{
+						sql: 'CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target)',
+						args: [],
+					},
+					{
+						sql: 'CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding))',
+						args: [],
+					},
+				],
+				'write',
+			);
+		} catch (error) {
+			throw new Error(
+				`Database initialization failed: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
 	}
 
 	public async close() {
