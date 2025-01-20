@@ -1,0 +1,21 @@
+# Smithery configuration file: https://smithery.ai/docs/deployments
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - libsqlUrl
+    properties:
+      libsqlUrl:
+        type: string
+        description: The URL for the libSQL database. Use a file path for local
+          databases or a libsql URL for remote databases.
+      libsqlAuthToken:
+        type: string
+        description: The authentication token for remote libSQL databases, e.g., Turso.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'node', args: ['dist/index.js'], env: { LIBSQL_URL: config.libsqlUrl, LIBSQL_AUTH_TOKEN: config.libsqlAuthToken || '' } })
