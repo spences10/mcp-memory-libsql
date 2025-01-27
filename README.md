@@ -1,7 +1,5 @@
 # mcp-memory-libsql
 
-[![smithery badge](https://smithery.ai/badge/mcp-memory-libsql)](https://smithery.ai/server/mcp-memory-libsql)
-
 A high-performance, persistent memory system for the Model Context
 Protocol (MCP) powered by libSQL. This server provides vector search
 capabilities and efficient knowledge storage using libSQL as the
