@@ -19,7 +19,7 @@ importers:
         version: 22.13.14
       dotenv:
         specifier: ^16.4.7
-        version: 16.4.7
+        version: 16.5.0
     devDependencies:
       '@changesets/cli':
         specifier: ^2.28.1
@@ -793,8 +793,8 @@ packages:
     resolution: {integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==}
     engines: {node: '>=8'}
 
-  dotenv@16.4.7:
-    resolution: {integrity: sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==}
+  dotenv@16.5.0:
+    resolution: {integrity: sha512-m/C+AwOAr9/W1UOIZUo232ejMNnJAJtYQjUbHoNTBNTJSvqzzDh7vnrei3o3r3m9blf6ZoDkvcw0VmozNRFJxg==}
     engines: {node: '>=12'}
 
   dunder-proto@1.0.1:
@@ -1319,6 +1319,7 @@ packages:
 
   libsql@0.5.3:
     resolution: {integrity: sha512-S3WR8WNCJV1VXraBFUKjDA6+8LcNDJMLm+83qohm1O3YM1iVqV2+/XN3SXOxpxVjuL4g/rLrjO5kzygkPefCFQ==}
+    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   lines-and-columns@1.2.4:
@@ -2931,7 +2932,7 @@ snapshots:
     dependencies:
       path-type: 4.0.0
 
-  dotenv@16.4.7: {}
+  dotenv@16.5.0: {}
 
   dunder-proto@1.0.1:
     dependencies:
