@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.15.4",
-    "@modelcontextprotocol/sdk": "1.10.2",
+    "@modelcontextprotocol/sdk": "1.11.0",
     "@types/node": "^22.15.3",
     "dotenv": "^16.5.0"
   },
