@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/spences10-mcp-memory-libsql-badge.png)](https://mseep.ai/app/spences10-mcp-memory-libsql)
+
 # mcp-memory-libsql
 
 A high-performance, persistent memory system for the Model Context
