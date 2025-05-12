@@ -45,7 +45,7 @@
     "release": "pnpm run build && changeset publish"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.4",
+    "@libsql/client": "^0.15.5",
     "@modelcontextprotocol/sdk": "1.11.1",
     "@types/node": "^22.15.17",
     "dotenv": "^16.5.0"
