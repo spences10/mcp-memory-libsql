@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
@@ -40,35 +39,39 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 func (s *MCPServer) setupToolHandlers() {
 	createEntitiesInputSchema, err := jsonschema.For[apptype.CreateEntitiesArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for CreateEntitiesArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for CreateEntitiesArgs: %v", err))
 	}
 	anyOutputSchema, err := jsonschema.For[any]()
 	if err != nil {
-		log.Fatalf("failed to create schema for any: %v", err)
+		panic(fmt.Sprintf("failed to create schema for any: %v", err))
 	}
 	searchNodesInputSchema, err := jsonschema.For[apptype.SearchNodesArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for SearchNodesArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for SearchNodesArgs: %v", err))
 	}
-	graphResultOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	searchNodesOutputSchema, err := jsonschema.For[apptype.GraphResult]()
 	if err != nil {
-		log.Fatalf("failed to create schema for GraphResult: %v", err)
+		panic(fmt.Sprintf("failed to create schema for GraphResult (search): %v", err))
 	}
 	readGraphInputSchema, err := jsonschema.For[apptype.ReadGraphArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for ReadGraphArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for ReadGraphArgs: %v", err))
+	}
+	readGraphOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for GraphResult (read): %v", err))
 	}
 	createRelationsInputSchema, err := jsonschema.For[apptype.CreateRelationsArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for CreateRelationsArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for CreateRelationsArgs: %v", err))
 	}
 	deleteEntityInputSchema, err := jsonschema.For[apptype.DeleteEntityArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for DeleteEntityArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for DeleteEntityArgs: %v", err))
 	}
 	deleteRelationInputSchema, err := jsonschema.For[apptype.DeleteRelationArgs]()
 	if err != nil {
-		log.Fatalf("failed to create schema for DeleteRelationArgs: %v", err)
+		panic(fmt.Sprintf("failed to create schema for DeleteRelationArgs: %v", err))
 	}
 
 	createEntitiesAnnotations := mcp.ToolAnnotations{
@@ -89,7 +92,7 @@ func (s *MCPServer) setupToolHandlers() {
 		Title:        "Search Nodes",
 		Description:  "Search for entities and their relations using text or vector similarity.",
 		InputSchema:  searchNodesInputSchema,
-		OutputSchema: graphResultOutputSchema,
+		OutputSchema: searchNodesOutputSchema,
 	}, s.handleSearchNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
@@ -97,7 +100,7 @@ func (s *MCPServer) setupToolHandlers() {
 		Title:        "Read Graph",
 		Description:  "Get recent entities and their relations.",
 		InputSchema:  readGraphInputSchema,
-		OutputSchema: graphResultOutputSchema,
+		OutputSchema: readGraphOutputSchema,
 	}, s.handleReadGraph)
 
 	mcp.AddTool(s.server, &mcp.Tool{
