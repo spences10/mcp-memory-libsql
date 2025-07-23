@@ -70,6 +70,20 @@ func TestDBManager(t *testing.T) {
 	})
 
 	t.Run("CreateRelations", func(t *testing.T) {
+		// First create the target entity
+		entities := []apptype.Entity{
+			{
+				Name:         "another-entity",
+				EntityType:   "test-type",
+				Observations: []string{"This is another test observation"},
+				Embedding:    []float32{0.5, 0.6, 0.7, 0.8},
+			},
+		}
+
+		if err := db.CreateEntities(ctx, entities); err != nil {
+			t.Fatalf("Failed to create target entity: %v", err)
+		}
+
 		// Create test relations
 		relations := []apptype.Relation{
 			{

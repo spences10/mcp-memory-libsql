@@ -3,13 +3,14 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
 	"strings"
 
 	_ "github.com/tursodatabase/go-libsql"
-	
+
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
 )
 
@@ -95,17 +96,27 @@ func arrayToVectorString(numbers []float32) string {
 	return fmt.Sprintf("[%s]", strings.Join(strNumbers, ", "))
 }
 
-// extractVector extracts vector from binary format
-func (dm *DBManager) extractVector(ctx context.Context, embedding []byte) ([]float32, error) {
+// extractVector extracts vector from binary format (F32_BLOB)
+func (dm *DBManager) ExtractVector(ctx context.Context, embedding []byte) ([]float32, error) {
 	if len(embedding) == 0 {
 		return nil, nil
 	}
 
-	// For libsql, the embedding might be stored as a BLOB
-	// We need to convert it back to float32 array
-	// This is a simplified approach - in reality, we might need to parse the BLOB format
-	// FIXME: IMPLEMENT THIS 
-	return nil, nil
+	// From my test, I found that F32_BLOB(4) stores 4 float32 values as little-endian bytes
+	// Each float32 is 4 bytes, so 16 bytes total for 4 dimensions
+	if len(embedding) != 16 {
+		return nil, fmt.Errorf("invalid embedding size: expected 16 bytes for 4-dimensional vector, got %d", len(embedding))
+	}
+
+	// Parse the little-endian float32 values from the BLOB
+	vector := make([]float32, 4)
+	for i := range vector {
+		// Read 4 bytes at offset i*4 and convert from little-endian
+		bits := binary.LittleEndian.Uint32(embedding[i*4 : (i+1)*4])
+		vector[i] = math.Float32frombits(bits)
+	}
+
+	return vector, nil
 }
 
 // CreateEntities creates or updates entities with their observations
@@ -233,7 +244,7 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, embedding []float32, lim
 		}
 
 		// Extract vector
-		vector, err := dm.extractVector(ctx, embeddingBytes)
+		vector, err := dm.ExtractVector(ctx, embeddingBytes)
 		if err != nil {
 			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
 			continue
@@ -298,7 +309,7 @@ func (dm *DBManager) GetEntity(ctx context.Context, name string) (*apptype.Entit
 		return nil, fmt.Errorf("failed to get observations: %w", err)
 	}
 
-	vector, err := dm.extractVector(ctx, embeddingBytes)
+	vector, err := dm.ExtractVector(ctx, embeddingBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract vector: %w", err)
 	}
@@ -345,7 +356,7 @@ func (dm *DBManager) SearchEntities(ctx context.Context, query string) ([]apptyp
 			continue
 		}
 
-		vector, err := dm.extractVector(ctx, embeddingBytes)
+		vector, err := dm.ExtractVector(ctx, embeddingBytes)
 		if err != nil {
 			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
 			continue
@@ -395,7 +406,7 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, limit int) ([]apptyp
 			continue
 		}
 
-		vector, err := dm.extractVector(ctx, embeddingBytes)
+		vector, err := dm.ExtractVector(ctx, embeddingBytes)
 		if err != nil {
 			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
 			continue
