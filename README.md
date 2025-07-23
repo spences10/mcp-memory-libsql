@@ -29,13 +29,13 @@ This will compile the binary and install it in a standard directory (e.g., `~/.l
 
 ### Command-line Flags
 
-- `-libsql-url`: Database URL (default: `file:./memory-tool.db`). Overrides the `LIBSQL_URL` environment variable.
+- `-libsql-url`: Database URL (default: `file:./libsql.db`). Overrides the `LIBSQL_URL` environment variable.
 - `-auth-token`: Authentication token for remote databases. Overrides the `LIBSQL_AUTH_TOKEN` environment variable.
 - `-projects-dir`: Base directory for projects. Enables multi-project mode. If this is set, `-libsql-url` is ignored.
 
 ### Environment Variables
 
-- `LIBSQL_URL`: Database URL (default: `file:./memory-tool.db`)
+- `LIBSQL_URL`: Database URL (default: `file:./libsql.db`)
   - Local file: `file:./path/to/db.sqlite`
   - Remote libSQL: `libsql://your-db.turso.io`
 - `LIBSQL_AUTH_TOKEN`: Authentication token for remote databases

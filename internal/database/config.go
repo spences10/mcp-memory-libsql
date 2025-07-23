@@ -16,7 +16,7 @@ type Config struct {
 func NewConfig() *Config {
 	url := os.Getenv("LIBSQL_URL")
 	if url == "" {
-		url = "file:./memory-tool.db"
+		url = "file:./libsql.db"
 	}
 
 	authToken := os.Getenv("LIBSQL_AUTH_TOKEN")

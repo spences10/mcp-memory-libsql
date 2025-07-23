@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	libsqlURL     = flag.String("libsql-url", "", "libSQL database URL (default: file:./memory-tool.db)")
-	authToken     = flag.String("auth-token", "", "Authentication token for remote databases")
-	projectsDir   = flag.String("projects-dir", "", "Base directory for projects. Enables multi-project mode.")
+	libsqlURL   = flag.String("libsql-url", "", "libSQL database URL (default: file:./libsql.db)")
+	authToken   = flag.String("auth-token", "", "Authentication token for remote databases")
+	projectsDir = flag.String("projects-dir", "", "Base directory for projects. Enables multi-project mode.")
 )
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 
 	// Initialize database configuration
 	config := database.NewConfig()
-	
+
 	// Override with command line flags if provided
 	if *libsqlURL != "" {
 		config.URL = *libsqlURL
