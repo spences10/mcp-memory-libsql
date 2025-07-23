@@ -1,160 +1,94 @@
-# mcp-memory-libsql
+# mcp-memory-libsql-go
 
-A high-performance, persistent memory system for the Model Context
-Protocol (MCP) powered by libSQL. This server provides vector search
-capabilities and efficient knowledge storage using libSQL as the
-backing store.
+A Go implementation of the MCP Memory Server using libSQL for persistent storage with vector search capabilities.
 
-<a href="https://glama.ai/mcp/servers/22lg4lq768">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/22lg4lq768/badge" alt="Glama badge" />
-</a>
+## Overview
+
+This project is a 1:1 port of the TypeScript `mcp-memory-libsql` project to Go. It provides a high-performance, persistent memory server for the Model Context Protocol (MCP) using libSQL (a fork of SQLite) for robust data storage, including vector search capabilities.
 
 ## Features
 
-- 🚀 High-performance vector search using libSQL
-- 💾 Persistent storage of entities and relations
-- 🔍 Semantic search capabilities
-- 🔄 Knowledge graph management
-- 🌐 Compatible with local and remote libSQL databases
-- 🔒 Secure token-based authentication for remote databases
+- **Persistent Storage**: Uses libSQL for reliable data persistence
+- **Vector Search**: Built-in cosine similarity search using libSQL's vector capabilities
+- **MCP Integration**: Fully compatible with the Model Context Protocol
+- **Knowledge Graph**: Store entities, observations, and relations
+- **Multiple Database Support**: Works with local files and remote libSQL servers
 
-## Configuration
+## Installation
 
-This server is designed to be used as part of an MCP configuration.
-Here are examples for different environments:
-
-### Cline Configuration
-
-Add this to your Cline MCP settings:
-
-```json
-{
-	"mcpServers": {
-		"mcp-memory-libsql": {
-			"command": "npx",
-			"args": ["-y", "mcp-memory-libsql"],
-			"env": {
-				"LIBSQL_URL": "file:/path/to/your/database.db"
-			}
-		}
-	}
-}
+```bash
+make deps
+make build
 ```
 
-### Claude Desktop with WSL Configuration
+Or manually:
 
-For a detailed guide on setting up this server with Claude Desktop in
-WSL, see
-[Getting MCP Server Working with Claude Desktop in WSL](https://scottspence.com/posts/getting-mcp-server-working-with-claude-desktop-in-wsl).
-
-Add this to your Claude Desktop configuration for WSL environments:
-
-```json
-{
-	"mcpServers": {
-		"mcp-memory-libsql": {
-			"command": "wsl.exe",
-			"args": [
-				"bash",
-				"-c",
-				"source ~/.nvm/nvm.sh && LIBSQL_URL=file:/path/to/database.db /home/username/.nvm/versions/node/v20.12.1/bin/npx mcp-memory-libsql"
-			]
-		}
-	}
-}
+```bash
+go mod tidy
+go build -o mcp-memory-libsql-go ./cmd/mcp-memory-libsql
 ```
 
-### Database Configuration
+## Usage
 
-The server supports both local SQLite and remote libSQL databases
-through the LIBSQL_URL environment variable:
+### Environment Variables
 
-For local SQLite databases:
+- `LIBSQL_URL`: Database URL (default: `file:./memory-tool.db`)
+  - Local file: `file:./path/to/db.sqlite`
+  - Remote libSQL: `libsql://your-db.turso.io`
+- `LIBSQL_AUTH_TOKEN`: Authentication token for remote databases
 
-```json
-{
-	"env": {
-		"LIBSQL_URL": "file:/path/to/database.db"
-	}
-}
+### Running the Server
+
+```bash
+# Using default local database
+./mcp-memory-libsql-go
+
+# Using environment variables
+LIBSQL_URL=file:./my-memory.db ./mcp-memory-libsql-go
+
+# Using remote database
+LIBSQL_URL=libsql://your-db.turso.io LIBSQL_AUTH_TOKEN=your-token ./mcp-memory-libsql-go
 ```
 
-For remote libSQL databases (e.g., Turso):
+## Tools Provided
 
-```json
-{
-	"env": {
-		"LIBSQL_URL": "libsql://your-database.turso.io",
-		"LIBSQL_AUTH_TOKEN": "your-auth-token"
-	}
-}
-```
+The server provides the following MCP tools:
 
-Note: When using WSL, ensure the database path uses the Linux
-filesystem format (e.g., `/home/username/...`) rather than Windows
-format.
-
-By default, if no URL is provided, it will use `file:/memory-tool.db`
-in the current directory.
-
-## API
-
-The server implements the standard MCP memory interface with
-additional vector search capabilities:
-
-- Entity Management
-  - Create/Update entities with embeddings
-  - Delete entities
-  - Search entities by similarity
-- Relation Management
-  - Create relations between entities
-  - Delete relations
-  - Query related entities
-
-## Architecture
-
-The server uses a libSQL database with the following schema:
-
-- Entities table: Stores entity information and embeddings
-- Relations table: Stores relationships between entities
-- Vector search capabilities implemented using libSQL's built-in
-  vector operations
+- `create_entities`: Create new entities with observations and optional embeddings
+- `search_nodes`: Search for entities and their relations using text or vector similarity
+- `read_graph`: Get recent entities and their relations
+- `create_relations`: Create relations between entities
+- `delete_entity`: Delete an entity and all its associated data
+- `delete_relation`: Delete a specific relation between entities
 
 ## Development
 
-### Publishing
+### Prerequisites
 
-Due to npm 2FA requirements, publishing needs to be done manually:
+- Go 1.21 or later
+- libSQL CGO dependencies (automatically handled by go-libsql)
 
-1. Create a changeset (documents your changes):
-
-```bash
-pnpm changeset
-```
-
-2. Version the package (updates version and CHANGELOG):
+### Building
 
 ```bash
-pnpm changeset version
+go build .
 ```
 
-3. Publish to npm (will prompt for 2FA code):
+### Testing
 
 ```bash
-pnpm release
+go test ./...
 ```
 
-## Contributing
+## Architecture
 
-Contributions are welcome! Please read our contributing guidelines
-before submitting pull requests.
+The project follows a clean, modular architecture:
+
+- `main.go`: Application entry point
+- `internal/apptype/`: Core data structures and MCP type definitions
+- `internal/database/`: Database client and logic using libSQL
+- `internal/server/`: MCP server implementation
 
 ## License
 
-MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built on the
-  [Model Context Protocol](https://github.com/modelcontextprotocol)
-- Powered by [libSQL](https://github.com/tursodatabase/libsql)
+MIT
