@@ -1,30 +1,45 @@
 package apptype
 
+// ProjectArgs provides a standard way to pass project context to tools.
+type ProjectArgs struct {
+	ProjectName string `json:"projectName,omitempty"`
+}
+
 // CreateEntitiesArgs represents the arguments for the create_entities tool
 type CreateEntitiesArgs struct {
+	ProjectArgs
 	Entities []Entity `json:"entities"`
 }
 
 // SearchNodesArgs represents the arguments for the search_nodes tool
 type SearchNodesArgs struct {
+	ProjectArgs
 	Query interface{} `json:"query"` // Can be string or []float32
 }
 
 // CreateRelationsArgs represents the arguments for the create_relations tool
 type CreateRelationsArgs struct {
+	ProjectArgs
 	Relations []Relation `json:"relations"`
 }
 
 // DeleteEntityArgs represents the arguments for the delete_entity tool
 type DeleteEntityArgs struct {
+	ProjectArgs
 	Name string `json:"name"`
 }
 
 // DeleteRelationArgs represents the arguments for the delete_relation tool
 type DeleteRelationArgs struct {
+	ProjectArgs
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Type   string `json:"type"`
+}
+
+// ReadGraphArgs represents the arguments for the read_graph tool
+type ReadGraphArgs struct {
+	ProjectArgs
 }
 
 // GraphResult represents the result for graph-related tools (search_nodes, read_graph)

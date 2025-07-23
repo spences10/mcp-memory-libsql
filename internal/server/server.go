@@ -10,6 +10,8 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/database"
 )
 
+const defaultProject = "default"
+
 // MCPServer handles MCP protocol communication
 type MCPServer struct {
 	server *mcp.Server
@@ -18,7 +20,6 @@ type MCPServer struct {
 
 // NewMCPServer creates a new MCP server
 func NewMCPServer(db *database.DBManager) *MCPServer {
-	// Create a server with no features
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-memory-libsql",
 		Version: "0.0.1",
@@ -35,7 +36,6 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 
 // setupToolHandlers registers all MCP tools
 func (s *MCPServer) setupToolHandlers() {
-	// Add tools using mcp.AddTool with strongly-typed handlers
 	mcp.AddTool(s.server, &mcp.Tool{
 		Name:        "create_entities",
 		Description: "Create new entities with observations and optional embeddings",
@@ -67,23 +67,30 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleDeleteRelation)
 }
 
+func (s *MCPServer) getProjectName(providedName string) string {
+	if providedName != "" {
+		return providedName
+	}
+	return defaultProject
+}
+
 // handleCreateEntities handles the create_entities tool call
 func (s *MCPServer) handleCreateEntities(
 	ctx context.Context,
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateEntitiesArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectName)
 	entities := params.Arguments.Entities
 
-	// Call database method
-	if err := s.db.CreateEntities(ctx, entities); err != nil {
+	if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
 		return nil, fmt.Errorf("failed to create entities: %w", err)
 	}
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
 			&mcp.TextContent{
-				Text: fmt.Sprintf("Successfully processed %d entities (created new or updated existing)", len(entities)),
+				Text: fmt.Sprintf("Successfully processed %d entities in project %s", len(entities), projectName),
 			},
 		},
 	}
@@ -96,9 +103,10 @@ func (s *MCPServer) handleSearchNodes(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.SearchNodesArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectName)
 	query := params.Arguments.Query
 
-	entities, relations, err := s.db.SearchNodes(ctx, query)
+	entities, relations, err := s.db.SearchNodes(ctx, projectName, query)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
@@ -121,9 +129,10 @@ func (s *MCPServer) handleSearchNodes(
 func (s *MCPServer) handleReadGraph(
 	ctx context.Context,
 	session *mcp.ServerSession,
-	params *mcp.CallToolParamsFor[any],
+	params *mcp.CallToolParamsFor[apptype.ReadGraphArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
-	entities, relations, err := s.db.ReadGraph(ctx)
+	projectName := s.getProjectName(params.Arguments.ProjectName)
+	entities, relations, err := s.db.ReadGraph(ctx, projectName)
 	if err != nil {
 		return nil, fmt.Errorf("read graph failed: %w", err)
 	}
@@ -148,9 +157,9 @@ func (s *MCPServer) handleCreateRelations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateRelationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectName)
 	relations := params.Arguments.Relations
 
-	// Convert to internal relation format if needed
 	internalRelations := make([]apptype.Relation, len(relations))
 	for i, r := range relations {
 		internalRelations[i] = apptype.Relation{
@@ -160,14 +169,14 @@ func (s *MCPServer) handleCreateRelations(
 		}
 	}
 
-	if err := s.db.CreateRelations(ctx, internalRelations); err != nil {
+	if err := s.db.CreateRelations(ctx, projectName, internalRelations); err != nil {
 		return nil, fmt.Errorf("failed to create relations: %w", err)
 	}
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
 			&mcp.TextContent{
-				Text: fmt.Sprintf("Created %d relations", len(relations)),
+				Text: fmt.Sprintf("Created %d relations in project %s", len(relations), projectName),
 			},
 		},
 	}
@@ -180,16 +189,17 @@ func (s *MCPServer) handleDeleteEntity(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteEntityArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectName)
 	name := params.Arguments.Name
 
-	if err := s.db.DeleteEntity(ctx, name); err != nil {
+	if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
 		return nil, fmt.Errorf("failed to delete entity: %w", err)
 	}
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
 			&mcp.TextContent{
-				Text: fmt.Sprintf("Successfully deleted entity %q and its associated data", name),
+				Text: fmt.Sprintf("Successfully deleted entity %q in project %s", name, projectName),
 			},
 		},
 	}
@@ -202,18 +212,19 @@ func (s *MCPServer) handleDeleteRelation(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteRelationArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectName)
 	source := params.Arguments.Source
 	target := params.Arguments.Target
 	relationType := params.Arguments.Type
 
-	if err := s.db.DeleteRelation(ctx, source, target, relationType); err != nil {
+	if err := s.db.DeleteRelation(ctx, projectName, source, target, relationType); err != nil {
 		return nil, fmt.Errorf("failed to delete relation: %w", err)
 	}
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
 			&mcp.TextContent{
-				Text: fmt.Sprintf("Successfully deleted relation: %s -> %s (%s)", source, target, relationType),
+				Text: fmt.Sprintf("Successfully deleted relation in project %s: %s -> %s (%s)", projectName, source, target, relationType),
 			},
 		},
 	}

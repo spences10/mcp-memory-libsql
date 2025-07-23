@@ -6,8 +6,10 @@ import (
 
 // Config holds the database configuration
 type Config struct {
-	URL       string
-	AuthToken string
+	URL              string
+	AuthToken        string
+	ProjectsDir      string
+	MultiProjectMode bool
 }
 
 // NewConfig creates a new Config from environment variables

@@ -15,6 +15,7 @@ import (
 var (
 	libsqlURL     = flag.String("libsql-url", "", "libSQL database URL (default: file:./memory-tool.db)")
 	authToken     = flag.String("auth-token", "", "Authentication token for remote databases")
+	projectsDir   = flag.String("projects-dir", "", "Base directory for projects. Enables multi-project mode.")
 )
 
 func main() {
@@ -41,6 +42,10 @@ func main() {
 	}
 	if *authToken != "" {
 		config.AuthToken = *authToken
+	}
+	if *projectsDir != "" {
+		config.ProjectsDir = *projectsDir
+		config.MultiProjectMode = true
 	}
 
 	// Create database manager
