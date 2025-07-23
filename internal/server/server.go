@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
@@ -21,8 +22,8 @@ type MCPServer struct {
 // NewMCPServer creates a new MCP server
 func NewMCPServer(db *database.DBManager) *MCPServer {
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "mcp-memory-libsql",
-		Version: "0.0.1",
+		Name:    "mcp-memory-libsql-go",
+		Version: buildinfo.Version,
 	}, nil)
 
 	mcpServer := &MCPServer{
