@@ -64,9 +64,13 @@ func main() {
 
 	// Run the server
 	log.Println("Starting MCP Memory LibSQL server...")
-	if err := mcpServer.Run(ctx); err != nil {
-		log.Fatalf("Server error: %v", err)
-	}
+	go func() {
+		if err := mcpServer.Run(ctx); err != nil {
+			log.Printf("Server error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
 
 	log.Println("Server stopped")
 }

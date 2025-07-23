@@ -34,7 +34,7 @@ echo "Creating installation directory if it doesn't exist: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 echo "Installing binary to $INSTALL_DIR"
-mv mcp-memory-libsql-go "$INSTALL_DIR/"
+mv $1 "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/mcp-memory-libsql-go"
 
 echo "Installation complete."

@@ -39,7 +39,7 @@ clean:
 install:
 	@echo "Installing $(BINARY_NAME) globally..."
 	@chmod +x install.sh
-	./install.sh
+	./install.sh $(BINARY_LOCATION)
 
 # Help
 .PHONY: help
