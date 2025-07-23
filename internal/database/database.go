@@ -54,26 +54,32 @@ func NewDBManager(config *Config) (*DBManager, error) {
 
 // initialize creates tables and indexes if they don't exist
 func (dm *DBManager) initialize() error {
+	tx, err := dm.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction for initialization: %w", err)
+	}
+	defer tx.Rollback()
+
 	for _, statement := range schema {
-		_, err := dm.db.ExecContext(context.Background(), statement)
+		_, err := tx.Exec(statement)
 		if err != nil {
 			return fmt.Errorf("failed to execute schema statement: %w", err)
 		}
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 // arrayToVectorString converts a float32 array to libSQL vector string format
-func arrayToVectorString(numbers []float32) string {
+func arrayToVectorString(numbers []float32) (string, error) {
 	// If no embedding provided, create a default zero vector
 	if len(numbers) == 0 {
-		return "[0.0, 0.0, 0.0, 0.0]"
+		return "[0.0, 0.0, 0.0, 0.0]", nil
 	}
 
 	// Validate vector dimensions match schema (4 dimensions for testing)
 	if len(numbers) != 4 {
-		log.Printf("Warning: Vector must have exactly 4 dimensions, got %d. Using default zero vector.", len(numbers))
-		return "[0.0, 0.0, 0.0, 0.0]"
+		return "", fmt.Errorf("vector must have exactly 4 dimensions, got %d. Please provide a 4D vector or omit for default zero vector", len(numbers))
 	}
 
 	// Validate all elements are finite numbers
@@ -93,7 +99,7 @@ func arrayToVectorString(numbers []float32) string {
 		strNumbers[i] = fmt.Sprintf("%f", n)
 	}
 
-	return fmt.Sprintf("[%s]", strings.Join(strNumbers, ", "))
+	return fmt.Sprintf("[%s]", strings.Join(strNumbers, ", ")), nil
 }
 
 // extractVector extracts vector from binary format (F32_BLOB)
@@ -122,21 +128,30 @@ func (dm *DBManager) ExtractVector(ctx context.Context, embedding []byte) ([]flo
 // CreateEntities creates or updates entities with their observations
 func (dm *DBManager) CreateEntities(ctx context.Context, entities []apptype.Entity) error {
 	for _, entity := range entities {
-		// Validate entity
-		if entity.Name == "" {
-			return fmt.Errorf("entity name must be non-empty")
+		// Validate entity name
+		if strings.TrimSpace(entity.Name) == "" {
+			return fmt.Errorf("entity name must be a non-empty string")
 		}
-		if entity.EntityType == "" {
-			return fmt.Errorf("entity type must be non-empty for entity %q", entity.Name)
+
+		// Validate entity type
+		if strings.TrimSpace(entity.EntityType) == "" {
+			return fmt.Errorf("invalid entity type for entity %q", entity.Name)
 		}
+
+		// Validate observations
 		if len(entity.Observations) == 0 {
 			return fmt.Errorf("entity %q must have at least one observation", entity.Name)
+		}
+		for _, obs := range entity.Observations {
+			if strings.TrimSpace(obs) == "" {
+				return fmt.Errorf("entity %q has invalid observations; all observations must be non-empty strings", entity.Name)
+			}
 		}
 
 		// Start transaction
 		tx, err := dm.db.BeginTx(ctx, nil)
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %w", err)
+			return fmt.Errorf("failed to begin transaction for entity %q: %w", entity.Name, err)
 		}
 
 		// Rollback on error
@@ -147,7 +162,10 @@ func (dm *DBManager) CreateEntities(ctx context.Context, entities []apptype.Enti
 		}()
 
 		// Convert embedding to string
-		vectorString := arrayToVectorString(entity.Embedding)
+		vectorString, err := arrayToVectorString(entity.Embedding)
+		if err != nil {
+			return fmt.Errorf("failed to convert embedding for entity %q: %w", entity.Name, err)
+		}
 
 		// First try to update
 		result, err := tx.ExecContext(ctx,
@@ -206,7 +224,10 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, embedding []float32, lim
 		return nil, fmt.Errorf("search embedding cannot be empty")
 	}
 
-	vectorString := arrayToVectorString(embedding)
+	vectorString, err := arrayToVectorString(embedding)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert search embedding: %w", err)
+	}
 
 	// Use vector_top_k to find similar entities, excluding zero vectors
 	query := `
