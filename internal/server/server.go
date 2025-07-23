@@ -141,7 +141,7 @@ func (s *MCPServer) handleCreateEntities(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateEntitiesArgs],
 ) (*mcp.CallToolResultFor[any], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entities := params.Arguments.Entities
 
 	if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
@@ -164,7 +164,7 @@ func (s *MCPServer) handleSearchNodes(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.SearchNodesArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	query := params.Arguments.Query
 
 	entities, relations, err := s.db.SearchNodes(ctx, projectName, query)
@@ -192,7 +192,7 @@ func (s *MCPServer) handleReadGraph(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.ReadGraphArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entities, relations, err := s.db.ReadGraph(ctx, projectName)
 	if err != nil {
 		return nil, fmt.Errorf("read graph failed: %w", err)
@@ -218,7 +218,7 @@ func (s *MCPServer) handleCreateRelations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateRelationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	relations := params.Arguments.Relations
 
 	internalRelations := make([]apptype.Relation, len(relations))
@@ -250,7 +250,7 @@ func (s *MCPServer) handleDeleteEntity(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteEntityArgs],
 ) (*mcp.CallToolResultFor[any], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	name := params.Arguments.Name
 
 	if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
@@ -273,7 +273,7 @@ func (s *MCPServer) handleDeleteRelation(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteRelationArgs],
 ) (*mcp.CallToolResultFor[any], error) {
-	projectName := s.getProjectName(params.Arguments.ProjectName)
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	source := params.Arguments.Source
 	target := params.Arguments.Target
 	relationType := params.Arguments.Type
