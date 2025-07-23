@@ -10,7 +10,7 @@ then
 fi
 
 echo "Building binary..."
-go build CGO_ENABLED=1 -o mcp-memory-libsql-go ./cmd/mcp-memory-libsql
+make build
 
 # Determine installation path
 INSTALL_DIR=""
