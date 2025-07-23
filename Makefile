@@ -2,12 +2,12 @@
 
 # Variables
 BINARY_NAME=mcp-memory-libsql-go
-MAIN_PACKAGE=./cmd/mcp-memory-libsql
+MAIN_PACKAGE=./cmd/${BINARY_NAME}
 BINARY_LOCATION=$(shell pwd)/bin/$(BINARY_NAME)
 VERSION ?= $(shell git describe --tags --always --dirty)
 REVISION ?= $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS = -ldflags "-X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.Version=$(VERSION) -X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.Revision=$(REVISION) -X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.BuildDate=$(BUILD_DATE)"
+LDFLAGS = -ldflags "-X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.Version=$(VERSION) -X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.Revision=$(REVISION) -X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.BuildDate=$(BUILD_DATE)"
 
 # Default target
 .PHONY: all
@@ -31,7 +31,7 @@ test:
 # Run the server
 .PHONY: run
 run: build
-	./$(BINARY_LOCATION)
+	$(BINARY_LOCATION)
 
 # Clean build artifacts
 .PHONY: clean
