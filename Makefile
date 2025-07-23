@@ -37,6 +37,8 @@ clean:
 # Install the binary globally
 .PHONY: install
 install:
+	@echo "Installing $(BINARY_NAME) globally..."
+	@chmod +x install.sh
 	./install.sh
 
 # Help
