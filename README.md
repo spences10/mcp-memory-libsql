@@ -17,17 +17,13 @@ This project is a 1:1 port of the TypeScript `mcp-memory-libsql` project to Go. 
 
 ## Installation
 
-```bash
-make deps
-make build
-```
-
-Or manually:
+To install the `mcp-memory-libsql-go` binary to a standard location on your system, use the following command:
 
 ```bash
-go mod tidy
-go build -o mcp-memory-libsql-go ./cmd/mcp-memory-libsql
+make install
 ```
+
+This will compile the binary and install it in a standard directory (e.g., `~/.local/bin` on Linux or `/usr/local/bin` on macOS), which should be in your system's `PATH`.
 
 ## Usage
 
@@ -119,6 +115,46 @@ go build .
 ```bash
 go test ./...
 ```
+
+## Client Integration
+
+### Cline
+
+To use this server with Cline, you can add it to your MCP server configuration. This allows Cline to run the `mcp-memory-libsql-go` binary as a local MCP server using the stdio transport.
+
+Here are some example configurations:
+
+#### Single-Database Mode
+
+This configuration runs the server with a single, specified database file.
+
+```json
+{
+  "mcpServers": {
+    "memory-db": {
+      "command": "/path/to/your/mcp-memory-libsql-go",
+      "args": ["-libsql-url", "file:./my-memory.db"]
+    }
+  }
+}
+```
+
+#### Multi-Project Mode
+
+This configuration runs the server in multi-project mode, managing separate databases within a specified directory.
+
+```json
+{
+  "mcpServers": {
+    "multi-project-memory-db": {
+      "command": "/path/to/your/mcp-memory-libsql-go",
+      "args": ["-projects-dir", "/path/to/your/projects"]
+    }
+  }
+}
+```
+
+Remember to replace `/path/to/your/mcp-memory-libsql-go` with the actual path to the compiled binary.
 
 ## Architecture
 

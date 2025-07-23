@@ -12,7 +12,7 @@ all: build
 # Build the binary
 .PHONY: build
 build:
-	go build -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
+	go build CGO_ENABLED=1 -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
 
 # Install dependencies
 .PHONY: deps
@@ -36,8 +36,8 @@ clean:
 
 # Install the binary globally
 .PHONY: install
-install: build
-	go install $(MAIN_PACKAGE)
+install:
+	./install.sh
 
 # Help
 .PHONY: help
