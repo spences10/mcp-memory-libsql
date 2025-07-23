@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-
-	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"log"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/database"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const defaultProject = "default"
@@ -37,34 +38,90 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 
 // setupToolHandlers registers all MCP tools
 func (s *MCPServer) setupToolHandlers() {
+	createEntitiesInputSchema, err := jsonschema.For[apptype.CreateEntitiesArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for CreateEntitiesArgs: %v", err)
+	}
+	anyOutputSchema, err := jsonschema.For[any]()
+	if err != nil {
+		log.Fatalf("failed to create schema for any: %v", err)
+	}
+	searchNodesInputSchema, err := jsonschema.For[apptype.SearchNodesArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for SearchNodesArgs: %v", err)
+	}
+	graphResultOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	if err != nil {
+		log.Fatalf("failed to create schema for GraphResult: %v", err)
+	}
+	readGraphInputSchema, err := jsonschema.For[apptype.ReadGraphArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for ReadGraphArgs: %v", err)
+	}
+	createRelationsInputSchema, err := jsonschema.For[apptype.CreateRelationsArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for CreateRelationsArgs: %v", err)
+	}
+	deleteEntityInputSchema, err := jsonschema.For[apptype.DeleteEntityArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for DeleteEntityArgs: %v", err)
+	}
+	deleteRelationInputSchema, err := jsonschema.For[apptype.DeleteRelationArgs]()
+	if err != nil {
+		log.Fatalf("failed to create schema for DeleteRelationArgs: %v", err)
+	}
+
+	createEntitiesAnnotations := mcp.ToolAnnotations{
+		Title: "Create Entities",
+	}
+
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "create_entities",
-		Description: "Create new entities with observations and optional embeddings",
+		Annotations:  &createEntitiesAnnotations,
+		Name:         "create_entities",
+		Title:        "Create Entities",
+		Description:  "Create new entities with observations and optional embeddings.",
+		InputSchema:  createEntitiesInputSchema,
+		OutputSchema: anyOutputSchema,
 	}, s.handleCreateEntities)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "search_nodes",
-		Description: "Search for entities and their relations using text or vector similarity",
+		Name:         "search_nodes",
+		Title:        "Search Nodes",
+		Description:  "Search for entities and their relations using text or vector similarity.",
+		InputSchema:  searchNodesInputSchema,
+		OutputSchema: graphResultOutputSchema,
 	}, s.handleSearchNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "read_graph",
-		Description: "Get recent entities and their relations",
+		Name:         "read_graph",
+		Title:        "Read Graph",
+		Description:  "Get recent entities and their relations.",
+		InputSchema:  readGraphInputSchema,
+		OutputSchema: graphResultOutputSchema,
 	}, s.handleReadGraph)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "create_relations",
-		Description: "Create relations between entities",
+		Name:         "create_relations",
+		Title:        "Create Relations",
+		Description:  "Create relations between entities.",
+		InputSchema:  createRelationsInputSchema,
+		OutputSchema: anyOutputSchema,
 	}, s.handleCreateRelations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "delete_entity",
-		Description: "Delete an entity and all its associated data (observations and relations)",
+		Name:         "delete_entity",
+		Title:        "Delete Entity",
+		Description:  "Delete an entity and all its associated data (observations and relations).",
+		InputSchema:  deleteEntityInputSchema,
+		OutputSchema: anyOutputSchema,
 	}, s.handleDeleteEntity)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:        "delete_relation",
-		Description: "Delete a specific relation between entities",
+		Name:         "delete_relation",
+		Title:        "Delete Relation",
+		Description:  "Delete a specific relation between entities.",
+		InputSchema:  deleteRelationInputSchema,
+		OutputSchema: anyOutputSchema,
 	}, s.handleDeleteRelation)
 }
 
