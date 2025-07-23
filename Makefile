@@ -3,6 +3,7 @@
 # Variables
 BINARY_NAME=mcp-memory-libsql-go
 MAIN_PACKAGE=./cmd/mcp-memory-libsql
+BINARY_LOCATION=$(shell pwd)/bin/$(BINARY_NAME)
 
 # Default target
 .PHONY: all
@@ -11,7 +12,7 @@ all: build
 # Build the binary
 .PHONY: build
 build:
-	go build -o $(BINARY_NAME) $(MAIN_PACKAGE)
+	go build -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
 
 # Install dependencies
 .PHONY: deps
@@ -26,12 +27,12 @@ test:
 # Run the server
 .PHONY: run
 run: build
-	./$(BINARY_NAME)
+	./$(BINARY_LOCATION)
 
 # Clean build artifacts
 .PHONY: clean
 clean:
-	rm -f $(BINARY_NAME)
+	rm -f $(BINARY_LOCATION)
 
 # Install the binary globally
 .PHONY: install
