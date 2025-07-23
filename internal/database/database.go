@@ -476,7 +476,7 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, 
 	}
 
 	rows, err := db.QueryContext(ctx,
-		"SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC LIMIT ?", limit)
+		"SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC, name DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query recent entities: %w", err)
 	}

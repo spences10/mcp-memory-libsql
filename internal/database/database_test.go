@@ -14,8 +14,10 @@ const testProject = "test-project"
 
 func setupTestDB(t *testing.T) (*DBManager, func()) {
 	config := NewConfig()
-	// Use an in-memory database for testing
-	config.URL = "file::memory:"
+	// Use an in-memory database for testing.
+	// The `cache=shared` is crucial for sharing the connection across different
+	// calls to `sql.Open` within the same process.
+	config.URL = "file:testdb?mode=memory&cache=shared"
 	db, err := NewDBManager(config)
 	require.NoError(t, err)
 
