@@ -151,7 +151,7 @@ func (dm *DBManager) CreateEntities(ctx context.Context, entities []apptype.Enti
 
 		// First try to update
 		result, err := tx.ExecContext(ctx,
-			"UPDATE entities SET entity_type = ?, embedding = vector(?) WHERE name = ?",
+			"UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?",
 			entity.EntityType, vectorString, entity.Name)
 		if err != nil {
 			return fmt.Errorf("failed to update entity %q: %w", entity.Name, err)
@@ -165,7 +165,7 @@ func (dm *DBManager) CreateEntities(ctx context.Context, entities []apptype.Enti
 		// If no rows affected, do insert
 		if rowsAffected == 0 {
 			_, err = tx.ExecContext(ctx,
-				"INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector(?))",
+				"INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))",
 				entity.Name, entity.EntityType, vectorString)
 			if err != nil {
 				return fmt.Errorf("failed to insert entity %q: %w", entity.Name, err)
@@ -211,7 +211,7 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, embedding []float32, lim
 	// Use vector_top_k to find similar entities, excluding zero vectors
 	query := `
 		SELECT e.name, e.entity_type, e.embedding,
-			   vector_distance_cos(e.embedding, vector(?)) as distance
+			   vector_distance_cos(e.embedding, vector32(?)) as distance
 		FROM entities e
 		WHERE e.embedding IS NOT NULL
 		AND e.embedding != vector('[0.0, 0.0, 0.0, 0.0]')
