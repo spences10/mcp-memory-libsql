@@ -16,9 +16,9 @@ func NewConfig() *Config {
 	if url == "" {
 		url = "file:./memory-tool.db"
 	}
-	
+
 	authToken := os.Getenv("LIBSQL_AUTH_TOKEN")
-	
+
 	return &Config{
 		URL:       url,
 		AuthToken: authToken,

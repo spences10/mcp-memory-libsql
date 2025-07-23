@@ -32,4 +32,3 @@ type GraphResult struct {
 	Entities  []Entity   `json:"entities"`
 	Relations []Relation `json:"relations"`
 }
-
