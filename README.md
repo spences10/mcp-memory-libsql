@@ -132,7 +132,20 @@ This configuration runs the server with a single, specified database file.
 {
   "mcpServers": {
     "memory-db": {
-      "command": "/path/to/your/mcp-memory-libsql-go",
+      "autoApprove": [
+        "create_entities",
+        "search_nodes",
+        "read_graph",
+        "create_relations",
+        "delete_entities",
+        "delete_relations",
+        "delete_entity",
+        "delete_relation"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "mcp-memory-libsql-go",
       "args": ["-libsql-url", "file:./my-memory.db"]
     }
   }
@@ -147,14 +160,27 @@ This configuration runs the server in multi-project mode, managing separate data
 {
   "mcpServers": {
     "multi-project-memory-db": {
-      "command": "/path/to/your/mcp-memory-libsql-go",
-      "args": ["-projects-dir", "/path/to/your/projects"]
+      "autoApprove": [
+        "create_entities",
+        "search_nodes",
+        "read_graph",
+        "create_relations",
+        "delete_entities",
+        "delete_relations",
+        "delete_entity",
+        "delete_relation"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "mcp-memory-libsql-go",
+      "args": ["-projects-dir", "/path/to/some/dir/.memory/memory-bank"]
     }
   }
 }
 ```
 
-Remember to replace `/path/to/your/mcp-memory-libsql-go` with the actual path to the compiled binary.
+Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual path to the compiled binary.
 
 ## Architecture
 
