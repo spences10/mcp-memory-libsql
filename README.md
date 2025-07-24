@@ -4,7 +4,15 @@ A Go implementation of the MCP Memory Server using libSQL for persistent storage
 
 ## Overview
 
-This project is a 1:1 port of the TypeScript `mcp-memory-libsql` project to Go. It provides a high-performance, persistent memory server for the Model Context Protocol (MCP) using libSQL (a fork of SQLite) for robust data storage, including vector search capabilities.
+This project is a 1:1 feature port of the TypeScript `mcp-memory-libsql` project to Go. It provides a high-performance, persistent memory server for the Model Context Protocol (MCP) using libSQL (a fork of SQLite) for robust data storage, including vector search capabilities.
+
+The go implemenation has a few advatages:
+
+- 2x performance
+- 40% less memory footprint
+- single binary with no runtime dependancies
+- tursodb/go-libsql driver
+- multi-project support
 
 ## Features
 
