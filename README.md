@@ -10,7 +10,7 @@ The go implemenation has a few advatages:
 
 - 2x performance
 - 40% less memory footprint
-- single binary with no runtime dependancies
+- single binary with no runtime dependencies
 - tursodb/go-libsql driver
 - multi-project support
 
