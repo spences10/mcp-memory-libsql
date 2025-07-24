@@ -180,7 +180,10 @@ This configuration runs the server in multi-project mode, managing separate data
 }
 ```
 
-Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual path to the compiled binary.
+Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual path to the location of your global memory location.
+
+> [!NOTE]\
+> A good location is `/home/user/Documents/memory-bank`
 
 ## Architecture
 
