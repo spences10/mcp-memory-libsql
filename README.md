@@ -680,29 +680,24 @@ go test -run=Fuzz -fuzz=Fuzz -fuzztime=2s ./internal/database
 
 ## Client Integration
 
-### Cline (or any MCP-ready AI Coding Agent)
+This server supports both stdio and SSE transports and can run as:
+- a raw binary (local stdio or SSE)
+- a single Docker container (stdio or SSE)
+- a Docker Compose stack (SSE, with multi-project mode and optional embeddings)
 
-To use this server with Cline, you can add it to your MCP server configuration. This allows Cline to run the `mcp-memory-libsql-go` binary as a local MCP server using the stdio transport.
+Below are reference integrations for Cursor/Cline and other MCP-ready clients.
 
-Here are some example configurations:
-
-#### Single-Database Mode
-
-This configuration runs the server with a single, specified database file.
+### Cursor / Cline (MCP) via stdio (single DB)
 
 ```json
 {
   "mcpServers": {
     "memory-db": {
       "autoApprove": [
-        "create_entities",
-        "search_nodes",
-        "read_graph",
-        "create_relations",
-        "delete_entities",
-        "delete_relations",
-        "delete_entity",
-        "delete_relation"
+        "create_entities","search_nodes","read_graph","create_relations",
+        "delete_entities","delete_relations","delete_entity","delete_relation",
+        "add_observations","open_nodes","delete_observations",
+        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
       ],
       "disabled": false,
       "timeout": 60,
@@ -714,23 +709,17 @@ This configuration runs the server with a single, specified database file.
 }
 ```
 
-#### Multi-Project Mode
-
-This configuration runs the server in multi-project mode, managing separate databases within a specified directory.
+### Cursor / Cline (MCP) via stdio (multi-project)
 
 ```json
 {
   "mcpServers": {
     "multi-project-memory-db": {
       "autoApprove": [
-        "create_entities",
-        "search_nodes",
-        "read_graph",
-        "create_relations",
-        "delete_entities",
-        "delete_relations",
-        "delete_entity",
-        "delete_relation"
+        "create_entities","search_nodes","read_graph","create_relations",
+        "delete_entities","delete_relations","delete_entity","delete_relation",
+        "add_observations","open_nodes","delete_observations",
+        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
       ],
       "disabled": false,
       "timeout": 60,
@@ -742,7 +731,67 @@ This configuration runs the server in multi-project mode, managing separate data
 }
 ```
 
-Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual directory where you want per-project databases stored. The server will create subdirectories per project and a `libsql.db` inside each.
+> Replace `/path/to/some/dir/.memory/memory-bank` with your desired base directory. The server will create `/path/to/.../<projectName>/libsql.db` per project.
+
+### Cursor / Cline (MCP) via SSE (Docker Compose, recommended for embeddings)
+
+Run the Compose stack in multi-project mode with Ollama embeddings (hybrid search, pooling, metrics):
+
+```bash
+make prod
+# SSE endpoint: http://localhost:8081/sse
+```
+
+Cursor/Cline SSE config:
+
+```json
+{
+  "mcpServers": {
+    "memory-db": {
+      "autoApprove": [
+        "create_entities","search_nodes","read_graph","create_relations",
+        "delete_entities","delete_relations","delete_entity","delete_relation",
+        "add_observations","open_nodes","delete_observations",
+        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "sse",
+      "url": "http://localhost:8081/sse"
+    }
+  }
+}
+```
+
+### Other usage patterns
+
+- Raw binary (stdio):
+  ```bash
+  ./mcp-memory-libsql-go -libsql-url file:./libsql.db
+  ```
+- Raw binary (SSE):
+  ```bash
+  ./mcp-memory-libsql-go -transport sse -addr :8080 -sse-endpoint /sse
+  # SSE URL: http://localhost:8080/sse
+  ```
+- Docker run (SSE):
+  ```bash
+  docker run --rm -p 8080:8080 -p 9090:9090 \
+    -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
+    -e EMBEDDING_DIMS=768 \
+    -v $(pwd)/data:/data \
+    mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
+  ```
+- Docker Compose (single DB):
+  ```bash
+  docker compose --profile single up --build -d
+  # SSE URL: http://localhost:8080/sse, Metrics: http://localhost:9090/healthz
+  ```
+- Docker Compose (multi-project, Ollama, hybrid):
+  ```bash
+  make prod
+  # SSE URL: http://localhost:8081/sse, Metrics: http://localhost:9091/healthz
+  ```
 
 ## Architecture
 
