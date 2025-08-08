@@ -534,7 +534,7 @@ func (dm *DBManager) AddObservations(ctx context.Context, projectName string, en
 }
 
 // SearchEntities performs text-based search
-func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, query string) ([]apptype.Entity, error) {
+func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, query string, limit int, offset int) ([]apptype.Entity, error) {
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -545,12 +545,20 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 	}
 
 	searchQuery := fmt.Sprintf("%%%s%%", query)
+	if limit <= 0 {
+		limit = 5
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT DISTINCT e.name, e.entity_type, e.embedding
-		FROM entities e
-		LEFT JOIN observations o ON e.name = o.entity_name
-		WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
-	`, searchQuery, searchQuery, searchQuery)
+        SELECT DISTINCT e.name, e.entity_type, e.embedding
+        FROM entities e
+        LEFT JOIN observations o ON e.name = o.entity_name
+        WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
+        ORDER BY e.name ASC
+        LIMIT ? OFFSET ?
+    `, searchQuery, searchQuery, searchQuery, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute entity search: %w", err)
 	}
@@ -948,7 +956,7 @@ func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit in
 }
 
 // SearchNodes performs either vector or text search based on query type
-func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}) ([]apptype.Entity, []apptype.Relation, error) {
+func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
 	var entities []apptype.Entity
 	var err error
 
@@ -957,7 +965,7 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 		if len(q) == 0 {
 			return nil, nil, fmt.Errorf("vector query cannot be empty")
 		}
-		results, searchErr := dm.SearchSimilar(ctx, projectName, q, 5, 0)
+		results, searchErr := dm.SearchSimilar(ctx, projectName, q, limit, offset)
 		if searchErr != nil {
 			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
 		}
@@ -974,7 +982,7 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 		for i, v := range q {
 			vec[i] = float32(v)
 		}
-		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, 5, 0)
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
 		if searchErr != nil {
 			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
 		}
@@ -1013,7 +1021,7 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 				return nil, nil, fmt.Errorf("unsupported vector element type at index %d: %T", i, v)
 			}
 		}
-		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, 5, 0)
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
 		if searchErr != nil {
 			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
 		}
@@ -1025,7 +1033,7 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 		if q == "" {
 			return nil, nil, fmt.Errorf("text query cannot be empty")
 		}
-		entities, err = dm.SearchEntities(ctx, projectName, q)
+		entities, err = dm.SearchEntities(ctx, projectName, q, limit, offset)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to perform entity search: %w", err)
 		}
@@ -1035,7 +1043,7 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 			if len(coerced) == 0 {
 				return nil, nil, fmt.Errorf("vector query cannot be empty")
 			}
-			results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, 5, 0)
+			results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, limit, offset)
 			if searchErr != nil {
 				return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
 			}

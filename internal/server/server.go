@@ -236,7 +236,7 @@ func (s *MCPServer) handleSearchNodes(
 		offset = 0
 	}
 
-	entities, relations, err := s.db.SearchNodes(ctx, projectName, query)
+	entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}

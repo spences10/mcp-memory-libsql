@@ -127,19 +127,19 @@ func TestSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	// Text search
-	results, _, err := db.SearchNodes(ctx, testProject, "apple")
+	results, _, err := db.SearchNodes(ctx, testProject, "apple", 5, 0)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "apple", results[0].Name)
 
 	// Vector search path: ensure different JSON-like vector forms are accepted
-	_, _, err = db.SearchNodes(ctx, testProject, []float32{0.1, 0.2, 0.3, 0.4})
+	_, _, err = db.SearchNodes(ctx, testProject, []float32{0.1, 0.2, 0.3, 0.4}, 5, 0)
 	require.NoError(t, err)
-	_, _, err = db.SearchNodes(ctx, testProject, []float64{0.1, 0.2, 0.3, 0.4})
+	_, _, err = db.SearchNodes(ctx, testProject, []float64{0.1, 0.2, 0.3, 0.4}, 5, 0)
 	require.NoError(t, err)
-	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{0.1, 0.2, 0.3, 0.4})
+	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{0.1, 0.2, 0.3, 0.4}, 5, 0)
 	require.NoError(t, err)
-	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{"0.1", "0.2", "0.3", "0.4"})
+	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{"0.1", "0.2", "0.3", "0.4"}, 5, 0)
 	require.NoError(t, err)
 }
 
