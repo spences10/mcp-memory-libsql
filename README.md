@@ -147,6 +147,9 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 - `DB_CONN_MAX_LIFETIME_SEC`: Connection max lifetime in seconds (optional)
 - `METRICS_PROMETHEUS`: If set (e.g., `true`), expose Prometheus metrics
 - `METRICS_ADDR`: Metrics HTTP address (default `:9090`) exposing `/metrics` and `/healthz`
+- `EMBEDDINGS_PROVIDER`: Optional embeddings source (`openai`, `ollama`); server still accepts client-supplied embeddings if unset.
+- `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL`: OpenAI provider configuration (default model: `text-embedding-3-small`).
+- `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL`: Ollama provider configuration (default model: `nomic-embed-text`).
 
 ### Running the Server
 

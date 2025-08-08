@@ -16,6 +16,8 @@ type Config struct {
 	MaxIdleConns     int
 	ConnMaxIdleSec   int
 	ConnMaxLifeSec   int
+	// Embeddings provider hints (optional)
+	EmbeddingsProvider string // e.g., "openai", "ollama"
 }
 
 // NewConfig creates a new Config from environment variables
