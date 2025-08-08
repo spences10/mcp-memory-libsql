@@ -20,6 +20,7 @@ import (
 	_ "github.com/tursodatabase/go-libsql"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/embeddings"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
@@ -38,6 +39,7 @@ type DBManager struct {
 		checked    bool
 		vectorTopK bool
 	}
+	provider embeddings.Provider
 }
 
 // Config returns a copy of the database configuration
@@ -58,6 +60,7 @@ func NewDBManager(config *Config) (*DBManager, error) {
 		dbs:       make(map[string]*sql.DB),
 		stmtCache: make(map[string]map[string]*sql.Stmt),
 	}
+	manager.provider = embeddings.NewFromEnv()
 
 	// If not in multi-project mode, initialize the default database immediately
 	if !config.MultiProjectMode {
@@ -264,6 +267,15 @@ func (dm *DBManager) vectorZeroString() string {
 	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
 }
 
+// embeddingInputForEntity builds a deterministic text for provider embedding generation
+func (dm *DBManager) embeddingInputForEntity(e apptype.Entity) string {
+	// Simple heuristic: join observations; providers often expect natural text
+	if len(e.Observations) == 0 {
+		return e.Name
+	}
+	return strings.Join(e.Observations, "\n")
+}
+
 // vectorToString converts a float32 array to libSQL vector string format
 func (dm *DBManager) vectorToString(numbers []float32) (string, error) {
 	// If no embedding provided, create a default zero vector
@@ -332,6 +344,33 @@ func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, ent
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
+	}
+
+	// Auto-generate embeddings via provider when missing
+	if dm.provider != nil {
+		if dm.provider.Dimensions() != dm.config.EmbeddingDims {
+			return fmt.Errorf("{\"error\":{\"code\":\"EMBEDDING_DIMS_MISMATCH\",\"message\":\"Provider dims %d do not match EMBEDDING_DIMS %d\"}}", dm.provider.Dimensions(), dm.config.EmbeddingDims)
+		}
+		inputs := make([]string, 0)
+		idxs := make([]int, 0)
+		for i, e := range entities {
+			if len(e.Embedding) == 0 {
+				inputs = append(inputs, dm.embeddingInputForEntity(e))
+				idxs = append(idxs, i)
+			}
+		}
+		if len(inputs) > 0 {
+			vecs, pErr := dm.provider.Embed(ctx, inputs)
+			if pErr != nil {
+				return fmt.Errorf("{\"error\":{\"code\":\"EMBEDDINGS_PROVIDER_ERROR\",\"message\":%q}}", pErr.Error())
+			}
+			if len(vecs) != len(inputs) {
+				return fmt.Errorf("{\"error\":{\"code\":\"EMBEDDINGS_PROVIDER_ERROR\",\"message\":\"provider returned mismatched embeddings count\"}}")
+			}
+			for j, idx := range idxs {
+				entities[idx].Embedding = vecs[j]
+			}
+		}
 	}
 
 	for _, entity := range entities {
@@ -469,6 +508,26 @@ func (dm *DBManager) UpdateEntities(ctx context.Context, projectName string, upd
 					return fmt.Errorf("failed updating entity type %q: %w", u.Name, err)
 				}
 			} else if len(u.Embedding) > 0 {
+				if _, err := tx.ExecContext(ctx, "UPDATE entities SET embedding = vector32(?) WHERE name = ?", vecStr, u.Name); err != nil {
+					return fmt.Errorf("failed updating entity embedding %q: %w", u.Name, err)
+				}
+			}
+		}
+
+		// If embedding still missing and provider exists, generate and update
+		if dm.provider != nil && len(u.Embedding) == 0 && len(u.ReplaceObservations) > 0 {
+			if dm.provider.Dimensions() != dm.config.EmbeddingDims {
+				return fmt.Errorf("{\"error\":{\"code\":\"EMBEDDING_DIMS_MISMATCH\",\"message\":\"Provider dims %d do not match EMBEDDING_DIMS %d\"}}", dm.provider.Dimensions(), dm.config.EmbeddingDims)
+			}
+			vecs, pErr := dm.provider.Embed(ctx, []string{strings.Join(u.ReplaceObservations, "\n")})
+			if pErr != nil {
+				return fmt.Errorf("{\"error\":{\"code\":\"EMBEDDINGS_PROVIDER_ERROR\",\"message\":%q}}", pErr.Error())
+			}
+			if len(vecs) == 1 {
+				vecStr, vErr := dm.vectorToString(vecs[0])
+				if vErr != nil {
+					return fmt.Errorf("embedding conversion failed for %q: %w", u.Name, vErr)
+				}
 				if _, err := tx.ExecContext(ctx, "UPDATE entities SET embedding = vector32(?) WHERE name = ?", vecStr, u.Name); err != nil {
 					return fmt.Errorf("failed updating entity embedding %q: %w", u.Name, err)
 				}

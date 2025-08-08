@@ -18,7 +18,7 @@ type Provider interface {
 }
 
 // NewFromEnv constructs a provider based on environment variables.
-// EMBEDDINGS_PROVIDER: "openai", "ollama", or empty for disabled.
+// EMBEDDINGS_PROVIDER: "openai", "ollama", "gemini", "vertexai", "localai", or empty for disabled.
 func NewFromEnv() Provider {
 	name := strings.ToLower(strings.TrimSpace(os.Getenv("EMBEDDINGS_PROVIDER")))
 	switch name {
@@ -29,6 +29,21 @@ func NewFromEnv() Provider {
 		return nil
 	case "ollama":
 		if p := newOllamaFromEnv(); p != nil {
+			return p
+		}
+		return nil
+	case "gemini", "google-gemini", "google_genai":
+		if p := newGeminiFromEnv(); p != nil {
+			return p
+		}
+		return nil
+	case "vertex", "vertexai", "google-vertex":
+		if p := newVertexFromEnv(); p != nil {
+			return p
+		}
+		return nil
+	case "localai", "llamacpp", "llama.cpp":
+		if p := newLocalAIFromEnv(); p != nil {
 			return p
 		}
 		return nil
