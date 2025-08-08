@@ -8,11 +8,7 @@ BIN := ./cmd/$(APP)
 build:
 	CGO_ENABLED=1 go build -o bin/$(APP) $(BIN)
 
-test:
-	go test ./...
 
-docker:
-	docker build -t $(APP):local .
 
 # Makefile for mcp-memory-libsql-go
 

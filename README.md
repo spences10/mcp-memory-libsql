@@ -301,6 +301,9 @@ The server provides the following MCP tools:
 - `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
 - `update_relations`: Update relation tuples
 - `health_check`: Return server info and configuration
+ - `neighbors`: 1-hop neighbors for given entities (direction out|in|both)
+ - `walk`: bounded-depth graph walk from seeds (direction/limit)
+ - `shortest_path`: shortest path between two entities
 
 ### Tool Summary
 
@@ -320,11 +323,17 @@ The server provides the following MCP tools:
 | update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                        | Update type/embedding/observations          |
 | update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                        | Delete old + insert new tuple               |
 | health_check        | Server health/info                      | –                             | –                                    | Version, revision, build date, dims         |
+| neighbors           | 1-hop neighbors                         | `names[]`                     | `projectArgs`, `direction`, `limit`  | direction: out|in|both (default both)       |
+| walk                | Graph expansion (BFS)                   | `names[]`                     | `projectArgs`, `maxDepth`, `direction`, `limit` | Bounded-depth walk                 |
+| shortest_path       | Shortest path                           | `from`,`to`                   | `projectArgs`, `direction`           | Returns path entities and edges             |
 
 #### Metrics
 
 - Set `METRICS_PROMETHEUS=true` to expose `/metrics` and `/healthz` on `METRICS_ADDR` (default `:9090`).
 - DB hot paths and tool handlers are instrumented with counters and latency histograms.
+- Additional gauges and counters:
+  - `db_pool_gauges{state="in_use|idle"}` observed periodically and on `health_check`
+  - `stmt_cache_events_total{op="prepare",result="hit|miss"}` from the prepared statement cache
 - If metrics are disabled, a no-op implementation is used.
 
 > We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
