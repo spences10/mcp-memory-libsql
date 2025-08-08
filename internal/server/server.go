@@ -539,7 +539,7 @@ func (s *MCPServer) handleDeleteRelations(
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	tuples := make([]apptype.Relation, len(params.Arguments.Relations))
 	for i, r := range params.Arguments.Relations {
-		tuples[i] = apptype.Relation{From: r.From, To: r.To, RelationType: r.RelationType}
+		tuples[i] = apptype.Relation(r)
 	}
 	if err := s.db.DeleteRelations(ctx, projectName, tuples); err != nil {
 		success = false

@@ -55,7 +55,7 @@ func TestSSEServer_ListTools(t *testing.T) {
 
 	// retry connect a few times to avoid flakes
 	var session *mcp.ClientSession
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		session, err = client.Connect(ctx, transport)
 		if err == nil {
 			break
@@ -96,7 +96,7 @@ func TestSSEServer_ConcurrentClients(t *testing.T) {
 	const clients = 16
 	errCh := make(chan error, clients)
 
-	for i := 0; i < clients; i++ {
+	for range clients {
 		go func() {
 			c := mcp.NewClient(&mcp.Implementation{Name: "e2e-client", Version: "test"}, nil)
 			transport := mcp.NewSSEClientTransport("http://"+addr+endpoint, nil)
@@ -111,7 +111,7 @@ func TestSSEServer_ConcurrentClients(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < clients; i++ {
+	for range clients {
 		require.NoError(t, <-errCh)
 	}
 }
@@ -158,8 +158,8 @@ func TestSSEServer_ToolCallsE2E(t *testing.T) {
 	searchRaw, _ := json.Marshal(searchArgs)
 	sres, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "search_nodes", Arguments: json.RawMessage(searchRaw)})
 	require.NoError(t, err)
-    // decode structured content
-    gr := decodeStructuredGraphResult(sres)
+	// decode structured content
+	gr := decodeStructuredGraphResult(sres)
 	assert.GreaterOrEqual(t, len(gr.Entities), 2)
 
 	// 3) read_graph
@@ -167,32 +167,32 @@ func TestSSEServer_ToolCallsE2E(t *testing.T) {
 	readRaw, _ := json.Marshal(readArgs)
 	rres, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read_graph", Arguments: json.RawMessage(readRaw)})
 	require.NoError(t, err)
-    gr2 := decodeStructuredGraphResult(rres)
+	gr2 := decodeStructuredGraphResult(rres)
 	assert.GreaterOrEqual(t, len(gr2.Entities), 2)
 }
 
 // decodeStructuredGraphResult attempts to unmarshal the structured content of a CallToolResult
 // into GraphResult, handling the various concrete types used by the SDK.
 func decodeStructuredGraphResult(res *mcp.CallToolResult) apptype.GraphResult {
-    var out apptype.GraphResult
-    if res == nil || res.StructuredContent == nil {
-        return out
-    }
-    switch v := res.StructuredContent.(type) {
-    case json.RawMessage:
-        _ = json.Unmarshal(v, &out)
-    case *json.RawMessage:
-        _ = json.Unmarshal(*v, &out)
-    case []byte:
-        _ = json.Unmarshal(v, &out)
-    case map[string]any:
-        if b, err := json.Marshal(v); err == nil {
-            _ = json.Unmarshal(b, &out)
-        }
-    default:
-        if b, err := json.Marshal(v); err == nil {
-            _ = json.Unmarshal(b, &out)
-        }
-    }
-    return out
+	var out apptype.GraphResult
+	if res == nil || res.StructuredContent == nil {
+		return out
+	}
+	switch v := res.StructuredContent.(type) {
+	case json.RawMessage:
+		_ = json.Unmarshal(v, &out)
+	case *json.RawMessage:
+		_ = json.Unmarshal(*v, &out)
+	case []byte:
+		_ = json.Unmarshal(v, &out)
+	case map[string]any:
+		if b, err := json.Marshal(v); err == nil {
+			_ = json.Unmarshal(b, &out)
+		}
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			_ = json.Unmarshal(b, &out)
+		}
+	}
+	return out
 }
