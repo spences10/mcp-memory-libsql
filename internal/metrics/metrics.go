@@ -15,6 +15,10 @@ type Recorder interface {
 	ObserveDBOpSeconds(op string, success bool, seconds float64)
 	IncToolTotal(tool string, success bool)
 	ObserveToolSeconds(tool string, success bool, seconds float64)
+	// Optional: statement-cache and pool metrics
+	IncStmtCacheHit(op string)
+	IncStmtCacheMiss(op string)
+	ObservePoolStats(inUse, idle int)
 }
 
 // noopRecorder implements Recorder with no-ops.
@@ -24,6 +28,9 @@ func (n *noopRecorder) IncDBOpTotal(string, bool)                {}
 func (n *noopRecorder) ObserveDBOpSeconds(string, bool, float64) {}
 func (n *noopRecorder) IncToolTotal(string, bool)                {}
 func (n *noopRecorder) ObserveToolSeconds(string, bool, float64) {}
+func (n *noopRecorder) IncStmtCacheHit(string)                   {}
+func (n *noopRecorder) IncStmtCacheMiss(string)                  {}
+func (n *noopRecorder) ObservePoolStats(int, int)                {}
 
 var (
 	recMu    sync.RWMutex

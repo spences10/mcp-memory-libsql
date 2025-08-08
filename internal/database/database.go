@@ -185,6 +185,18 @@ func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
 	dm.provider = p
 }
 
+// PoolStats returns aggregate pool stats across known project DBs.
+func (dm *DBManager) PoolStats() (inUse int, idle int) {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	for _, db := range dm.dbs {
+		s := db.Stats()
+		inUse += s.InUse
+		idle += s.Idle
+	}
+	return
+}
+
 // GetRelations returns all relations where either source or target belongs to the provided
 // entity names. This is a convenience wrapper around GetRelationsForEntities.
 func (dm *DBManager) GetRelations(ctx context.Context, projectName string, entityNames []string) ([]apptype.Relation, error) {
@@ -332,6 +344,9 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	dm.mu.Unlock()
 	// Detect optional capabilities once
 	dm.detectCapabilities(context.Background(), newDb)
+	// Observe initial pool stats
+	stats := newDb.Stats()
+	metrics.Default().ObservePoolStats(stats.InUse, stats.Idle)
 	return newDb, nil
 }
 
@@ -342,10 +357,12 @@ func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db
 	if projCache, ok := dm.stmtCache[projectName]; ok {
 		if stmt, ok2 := projCache[sqlText]; ok2 {
 			dm.stmtMu.RUnlock()
+			metrics.Default().IncStmtCacheHit("prepare")
 			return stmt, nil
 		}
 	}
 	dm.stmtMu.RUnlock()
+	metrics.Default().IncStmtCacheMiss("prepare")
 
 	// prepare and store
 	stmt, err := db.PrepareContext(ctx, sqlText)
@@ -1624,6 +1641,92 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 	}
 	success = true
 	return relations, nil
+}
+
+// GetNeighbors returns 1-hop neighbors for the given entity names.
+// direction: "out" (source->target), "in" (target<-source), or "both".
+func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names []string, direction string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
+	done := metrics.TimeOp("db_get_neighbors")
+	success := false
+	defer func() { done(success) }()
+	if len(names) == 0 {
+		return []apptype.Entity{}, []apptype.Relation{}, nil
+	}
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Build direction filter
+	if direction == "" {
+		direction = "both"
+	}
+	placeholders := strings.Repeat("?,", len(names))
+	placeholders = placeholders[:len(placeholders)-1]
+	var query string
+	switch strings.ToLower(direction) {
+	case "out":
+		query = fmt.Sprintf(`
+            SELECT source, target, relation_type FROM relations
+            WHERE source IN (%s)
+        `, placeholders)
+	case "in":
+		query = fmt.Sprintf(`
+            SELECT source, target, relation_type FROM relations
+            WHERE target IN (%s)
+        `, placeholders)
+	default: // both
+		query = fmt.Sprintf(`
+            SELECT source, target, relation_type FROM relations
+            WHERE source IN (%s) OR target IN (%s)
+        `, placeholders, placeholders)
+	}
+	args := make([]interface{}, 0, len(names)*2)
+	for _, n := range names {
+		args = append(args, n)
+	}
+	if strings.ToLower(direction) == "both" {
+		for _, n := range names {
+			args = append(args, n)
+		}
+	}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query neighbor relations: %w", err)
+	}
+	defer rows.Close()
+
+	rels := make([]apptype.Relation, 0)
+	entitySet := make(map[string]struct{})
+	for _, n := range names {
+		entitySet[n] = struct{}{}
+	}
+	for rows.Next() {
+		var s, t, rt string
+		if err := rows.Scan(&s, &t, &rt); err != nil {
+			return nil, nil, fmt.Errorf("failed to scan relation: %w", err)
+		}
+		rels = append(rels, apptype.Relation{From: s, To: t, RelationType: rt})
+		entitySet[s] = struct{}{}
+		entitySet[t] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	// Materialize entities
+	allNames := make([]string, 0, len(entitySet))
+	for n := range entitySet {
+		allNames = append(allNames, n)
+	}
+	ents, err := dm.GetEntities(ctx, projectName, allNames)
+	if err != nil {
+		return nil, nil, err
+	}
+	success = true
+	return ents, rels, nil
 }
 
 // ReadGraph retrieves recent entities and their relations

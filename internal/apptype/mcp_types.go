@@ -129,3 +129,12 @@ type OpenNodesArgs struct {
 	Names            []string    `json:"names" jsonschema:"Entity names to open."`
 	IncludeRelations bool        `json:"includeRelations,omitempty" jsonschema:"Whether to include relations among the returned entities."`
 }
+
+// NeighborsArgs represents arguments for fetching 1-hop neighbors
+// Direction may be "out", "in", or "both" (default "both").
+type NeighborsArgs struct {
+	ProjectArgs ProjectArgs `json:"projectArgs,omitempty" jsonschema:"Project context for the operation."`
+	Names       []string    `json:"names" jsonschema:"Seed entity names to expand from."`
+	Direction   string      `json:"direction,omitempty" jsonschema:"Which direction of edges to follow: out|in|both (default both)."`
+	Limit       int         `json:"limit,omitempty" jsonschema:"Maximum number of neighbor entities to return (per seed)."`
+}

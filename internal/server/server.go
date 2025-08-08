@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
@@ -120,6 +121,14 @@ func (s *MCPServer) setupToolHandlers() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for HealthResult: %v", err))
 	}
+	neighborsInputSchema, err := jsonschema.For[apptype.NeighborsArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for NeighborsArgs: %v", err))
+	}
+	neighborsOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for GraphResult (neighbors): %v", err))
+	}
 
 	createEntitiesAnnotations := mcp.ToolAnnotations{
 		Title: "Create Entities",
@@ -233,6 +242,14 @@ func (s *MCPServer) setupToolHandlers() {
 		InputSchema:  healthInputSchema,
 		OutputSchema: healthOutputSchema,
 	}, s.handleHealth)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "neighbors",
+		Title:        "Neighbors",
+		Description:  "Fetch 1-hop neighbors for given entities.",
+		InputSchema:  neighborsInputSchema,
+		OutputSchema: neighborsOutputSchema,
+	}, s.handleNeighbors)
 }
 
 func (s *MCPServer) getProjectName(providedName string) string {
@@ -624,6 +641,9 @@ func (s *MCPServer) handleHealth(
 	done := metrics.TimeTool("health_check")
 	defer func() { done(true) }()
 	cfg := s.db.Config()
+	// observe current pool gauges
+	inUse, idle := s.db.PoolStats()
+	metrics.Default().ObservePoolStats(inUse, idle)
 	res := &apptype.HealthResult{
 		Name:          "mcp-memory-libsql-go",
 		Version:       buildinfo.Version,
@@ -638,14 +658,66 @@ func (s *MCPServer) handleHealth(
 	}, nil
 }
 
+// handleNeighbors returns 1-hop neighbors and connecting relations
+func (s *MCPServer) handleNeighbors(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.NeighborsArgs],
+) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("neighbors")
+	var success bool
+	defer func() { done(success) }()
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	names := params.Arguments.Names
+	direction := params.Arguments.Direction
+	limit := params.Arguments.Limit
+	ents, rels, err := s.db.GetNeighbors(ctx, projectName, names, direction, limit)
+	if err != nil {
+		return nil, fmt.Errorf("neighbors failed: %w", err)
+	}
+	success = true
+	return &mcp.CallToolResultFor[apptype.GraphResult]{
+		Content:           []mcp.Content{&mcp.TextContent{Text: "Neighbors fetched"}},
+		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
+	}, nil
+}
+
 // Run starts the MCP server with stdio transport
 func (s *MCPServer) Run(ctx context.Context) error {
+	// periodic pool stats reporting
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				inUse, idle := s.db.PoolStats()
+				metrics.Default().ObservePoolStats(inUse, idle)
+			}
+		}
+	}()
 	transport := mcp.NewStdioTransport()
 	return s.server.Run(ctx, transport)
 }
 
 // RunSSE starts the MCP server over SSE at the given address and endpoint
 func (s *MCPServer) RunSSE(ctx context.Context, addr string, endpoint string) error {
+	// periodic pool stats reporting
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				inUse, idle := s.db.PoolStats()
+				metrics.Default().ObservePoolStats(inUse, idle)
+			}
+		}
+	}()
 	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return s.server })
 	mux := http.NewServeMux()
 	mux.Handle(endpoint, handler)
