@@ -77,7 +77,7 @@ make docker
 
 docker run --rm -p 8080:8080 -p 9090:9090 \
   -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
-  -e EMBEDDING_DIMS=384 \
+  -e EMBEDDING_DIMS=786 \
   -v $(pwd)/data:/data \
   mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
 ```
@@ -121,7 +121,8 @@ mkdir -p /path/to/projects
 EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim embeddings
 ```
 
-> Note: Changing `EMBEDDING_DIMS` for an existing DB requires a manual migration or new DB file.
+> [!NOTE]\ 
+> Changing `EMBEDDING_DIMS` for an existing DB requires a manual migration or new DB file.
 
 ## Usage
 
@@ -160,7 +161,8 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 - Google Vertex AI: `VERTEX_EMBEDDINGS_ENDPOINT`, `VERTEX_ACCESS_TOKEN` (Bearer token). Endpoint format: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict`.
 - LocalAI / llama.cpp (OpenAI-compatible): `LOCALAI_BASE_URL` (default `http://localhost:8080/v1`), `LOCALAI_EMBEDDINGS_MODEL` (default `text-embedding-ada-002`, dims 1536), optional `LOCALAI_API_KEY`.
 
-> Important: Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
+> [!IMPORTANT]\
+>  Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
 
 #### Common model → EMBEDDING_DIMS mapping
 
@@ -506,7 +508,7 @@ go test ./...
 
 ## Client Integration
 
-### Cline
+### Cline (or any MCP-ready AI Coding Agent)
 
 To use this server with Cline, you can add it to your MCP server configuration. This allows Cline to run the `mcp-memory-libsql-go` binary as a local MCP server using the stdio transport.
 
