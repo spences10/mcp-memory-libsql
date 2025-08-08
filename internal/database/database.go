@@ -1473,27 +1473,24 @@ func (dm *DBManager) DeleteEntities(ctx context.Context, projectName string, nam
 	if len(names) == 0 {
 		return nil
 	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	// Perform per-entity deletions without a single transaction to avoid driver quirks
+	// around modifying tables that may be in use by cached read statements.
 	for _, name := range names {
 		if strings.TrimSpace(name) == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM observations WHERE entity_name = ?", name); err != nil {
+		// Delete observations (all) for the entity
+		if _, err := dm.DeleteObservations(ctx, projectName, name, nil, nil); err != nil {
 			return fmt.Errorf("failed to delete observations for %q: %w", name, err)
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM relations WHERE source = ? OR target = ?", name, name); err != nil {
+		// Delete relations touching the entity
+		if _, err := db.ExecContext(ctx, "DELETE FROM relations WHERE source = ? OR target = ?", name, name); err != nil {
 			return fmt.Errorf("failed to delete relations for %q: %w", name, err)
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM entities WHERE name = ?", name); err != nil {
+		// Finally delete the entity
+		if _, err := db.ExecContext(ctx, "DELETE FROM entities WHERE name = ?", name); err != nil {
 			return fmt.Errorf("failed to delete entity %q: %w", name, err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
 	}
 	success = true
 	return nil
