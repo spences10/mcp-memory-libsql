@@ -35,7 +35,7 @@ mkdir -p "$INSTALL_DIR"
 
 # Check if the binary already exists in the installation directory
 if [ -f "$INSTALL_DIR/mcp-memory-libsql-go" ]; then
-    echo "Binary already exists in $INSTALL_DIR. Please remove it before installing."
+    echo "Binary already exists in $INSTALL_DIR, removing it before installing."
     # Remove the binary
     rm "$INSTALL_DIR/mcp-memory-libsql-go"
 fi
