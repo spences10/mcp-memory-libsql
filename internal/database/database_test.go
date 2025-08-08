@@ -132,10 +132,14 @@ func TestSearch(t *testing.T) {
 	assert.Len(t, results, 1)
 	assert.Equal(t, "apple", results[0].Name)
 
-	// Vector search would require a mock embedding function or pre-computed vectors
-	// For now, we just test that the method can be called without error for a vector.
-	// Note: The default vector is 4D zeros, so similarity search might not be meaningful here.
+	// Vector search path: ensure different JSON-like vector forms are accepted
 	_, _, err = db.SearchNodes(ctx, testProject, []float32{0.1, 0.2, 0.3, 0.4})
+	require.NoError(t, err)
+	_, _, err = db.SearchNodes(ctx, testProject, []float64{0.1, 0.2, 0.3, 0.4})
+	require.NoError(t, err)
+	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{0.1, 0.2, 0.3, 0.4})
+	require.NoError(t, err)
+	_, _, err = db.SearchNodes(ctx, testProject, []interface{}{"0.1", "0.2", "0.3", "0.4"})
 	require.NoError(t, err)
 }
 
@@ -149,7 +153,7 @@ func TestReadGraph(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	entities, relations, err := db.ReadGraph(ctx, testProject)
+	entities, relations, err := db.ReadGraph(ctx, testProject, 10)
 	require.NoError(t, err)
 	assert.NotEmpty(t, entities)
 	// Relations might be empty if none were created

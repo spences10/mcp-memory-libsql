@@ -4,11 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -85,7 +89,20 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	} else {
 		authURL := dbURL
 		if dm.config.AuthToken != "" {
-			authURL += "?authToken=" + dm.config.AuthToken
+			// Build URL safely and append/override the authToken parameter
+			if u, perr := url.Parse(dbURL); perr == nil {
+				q := u.Query()
+				q.Set("authToken", dm.config.AuthToken)
+				u.RawQuery = q.Encode()
+				authURL = u.String()
+			} else {
+				// Fallback: naive append with encoding
+				if strings.Contains(dbURL, "?") {
+					authURL = dbURL + "&authToken=" + url.QueryEscape(dm.config.AuthToken)
+				} else {
+					authURL = dbURL + "?authToken=" + url.QueryEscape(dm.config.AuthToken)
+				}
+			}
 		}
 		newDb, err = sql.Open("libsql", authURL)
 	}
@@ -112,7 +129,7 @@ func (dm *DBManager) initialize(db *sql.DB) error {
 	}
 	defer tx.Rollback()
 
-	for _, statement := range schema {
+	for _, statement := range dynamicSchema(dm.config.EmbeddingDims) {
 		_, err := tx.Exec(statement)
 		if err != nil {
 			return fmt.Errorf("failed to execute schema statement: %w", err)
@@ -122,16 +139,32 @@ func (dm *DBManager) initialize(db *sql.DB) error {
 	return tx.Commit()
 }
 
-// arrayToVectorString converts a float32 array to libSQL vector string format
-func arrayToVectorString(numbers []float32) (string, error) {
+// vectorZeroString builds a zero vector string for current embedding dims
+func (dm *DBManager) vectorZeroString() string {
+	if dm.config.EmbeddingDims <= 0 {
+		return "[0.0, 0.0, 0.0, 0.0]"
+	}
+	parts := make([]string, dm.config.EmbeddingDims)
+	for i := range parts {
+		parts[i] = "0.0"
+	}
+	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
+}
+
+// vectorToString converts a float32 array to libSQL vector string format
+func (dm *DBManager) vectorToString(numbers []float32) (string, error) {
 	// If no embedding provided, create a default zero vector
 	if len(numbers) == 0 {
-		return "[0.0, 0.0, 0.0, 0.0]", nil
+		return dm.vectorZeroString(), nil
 	}
 
-	// Validate vector dimensions match schema (4 dimensions for testing)
-	if len(numbers) != 4 {
-		return "", fmt.Errorf("vector must have exactly 4 dimensions, got %d. Please provide a 4D vector or omit for default zero vector", len(numbers))
+	// Validate vector dimensions match schema (use configured dims)
+	dims := dm.config.EmbeddingDims
+	if dims <= 0 {
+		dims = 4
+	}
+	if len(numbers) != dims {
+		return "", fmt.Errorf("vector must have exactly %d dimensions, got %d", dims, len(numbers))
 	}
 
 	// Validate all elements are finite numbers
@@ -160,12 +193,17 @@ func (dm *DBManager) ExtractVector(ctx context.Context, embedding []byte) ([]flo
 		return nil, nil
 	}
 
-	if len(embedding) != 16 {
-		return nil, fmt.Errorf("invalid embedding size: expected 16 bytes for 4-dimensional vector, got %d", len(embedding))
+	dims := dm.config.EmbeddingDims
+	if dims <= 0 {
+		dims = 4
+	}
+	expectedBytes := dims * 4
+	if len(embedding) != expectedBytes {
+		return nil, fmt.Errorf("invalid embedding size: expected %d bytes for %d-dimensional vector, got %d", expectedBytes, dims, len(embedding))
 	}
 
-	vector := make([]float32, 4)
-	for i := range vector {
+	vector := make([]float32, dims)
+	for i := 0; i < dims; i++ {
 		bits := binary.LittleEndian.Uint32(embedding[i*4 : (i+1)*4])
 		vector[i] = math.Float32frombits(bits)
 	}
@@ -206,7 +244,7 @@ func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, ent
 				}
 			}()
 
-			vectorString, vErr := arrayToVectorString(entity.Embedding)
+			vectorString, vErr := dm.vectorToString(entity.Embedding)
 			if vErr != nil {
 				err = fmt.Errorf("failed to convert embedding for entity %q: %w", entity.Name, vErr)
 				return
@@ -268,7 +306,7 @@ func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, ent
 }
 
 // SearchSimilar performs vector similarity search
-func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embedding []float32, limit int) ([]apptype.SearchResult, error) {
+func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embedding []float32, limit int, offset int) ([]apptype.SearchResult, error) {
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -278,22 +316,23 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 		return nil, fmt.Errorf("search embedding cannot be empty")
 	}
 
-	vectorString, err := arrayToVectorString(embedding)
+	vectorString, err := dm.vectorToString(embedding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert search embedding: %w", err)
 	}
+	zeroString := dm.vectorZeroString()
 
 	query := `
 		SELECT e.name, e.entity_type, e.embedding,
 			   vector_distance_cos(e.embedding, vector32(?)) as distance
 		FROM entities e
 		WHERE e.embedding IS NOT NULL
-		AND e.embedding != vector('[0.0, 0.0, 0.0, 0.0]')
+        AND e.embedding != vector32(?)
 		ORDER BY distance ASC
-		LIMIT ?
+        LIMIT ? OFFSET ?
 	`
 
-	rows, err := db.QueryContext(ctx, query, vectorString, limit)
+	rows, err := db.QueryContext(ctx, query, vectorString, zeroString, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute similarity search: %w", err)
 	}
@@ -402,6 +441,96 @@ func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name str
 		Observations: observations,
 		Embedding:    vector,
 	}, nil
+}
+
+// GetEntities retrieves a list of entities by names
+func (dm *DBManager) GetEntities(ctx context.Context, projectName string, names []string) ([]apptype.Entity, error) {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return []apptype.Entity{}, nil
+	}
+	placeholders := strings.Repeat("?,", len(names))
+	placeholders = placeholders[:len(placeholders)-1]
+	query := fmt.Sprintf("SELECT name, entity_type, embedding FROM entities WHERE name IN (%s)", placeholders)
+	args := make([]interface{}, len(names))
+	for i, n := range names {
+		args[i] = n
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query entities by names: %w", err)
+	}
+	defer rows.Close()
+
+	var results []apptype.Entity
+	for rows.Next() {
+		var name, entityType string
+		var embeddingBytes []byte
+		if err := rows.Scan(&name, &entityType, &embeddingBytes); err != nil {
+			return nil, fmt.Errorf("failed to scan entity: %w", err)
+		}
+		observations, err := dm.getEntityObservations(ctx, projectName, name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get observations for %q: %w", name, err)
+		}
+		vector, err := dm.ExtractVector(ctx, embeddingBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract vector for %q: %w", name, err)
+		}
+		results = append(results, apptype.Entity{
+			Name:         name,
+			EntityType:   entityType,
+			Observations: observations,
+			Embedding:    vector,
+		})
+	}
+	return results, rows.Err()
+}
+
+// AddObservations appends observations to an existing entity
+func (dm *DBManager) AddObservations(ctx context.Context, projectName string, entityName string, observations []string) error {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(entityName) == "" {
+		return fmt.Errorf("entityName cannot be empty")
+	}
+	if len(observations) == 0 {
+		return nil
+	}
+	// ensure entity exists
+	var tmp string
+	if err := db.QueryRowContext(ctx, "SELECT name FROM entities WHERE name = ?", entityName).Scan(&tmp); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("entity not found: %s", entityName)
+		}
+		return fmt.Errorf("failed to verify entity existence: %w", err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO observations (entity_name, content) VALUES (?, ?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert observation: %w", err)
+	}
+	defer stmt.Close()
+	for _, obs := range observations {
+		if strings.TrimSpace(obs) == "" {
+			continue
+		}
+		if _, err := stmt.ExecContext(ctx, entityName, obs); err != nil {
+			return fmt.Errorf("failed to insert observation: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // SearchEntities performs text-based search
@@ -631,6 +760,125 @@ func (dm *DBManager) DeleteRelation(ctx context.Context, projectName string, sou
 	return nil
 }
 
+// DeleteEntities deletes multiple entities by name within a single transaction
+func (dm *DBManager) DeleteEntities(ctx context.Context, projectName string, names []string) error {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM observations WHERE entity_name = ?", name); err != nil {
+			return fmt.Errorf("failed to delete observations for %q: %w", name, err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM relations WHERE source = ? OR target = ?", name, name); err != nil {
+			return fmt.Errorf("failed to delete relations for %q: %w", name, err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM entities WHERE name = ?", name); err != nil {
+			return fmt.Errorf("failed to delete entity %q: %w", name, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteRelations deletes multiple relations within a transaction
+func (dm *DBManager) DeleteRelations(ctx context.Context, projectName string, tuples []apptype.Relation) error {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return err
+	}
+	if len(tuples) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, "DELETE FROM relations WHERE source = ? AND target = ? AND relation_type = ?")
+	if err != nil {
+		return fmt.Errorf("failed to prepare delete relation: %w", err)
+	}
+	defer stmt.Close()
+	for _, r := range tuples {
+		if _, err := stmt.ExecContext(ctx, r.From, r.To, r.RelationType); err != nil {
+			return fmt.Errorf("failed to delete relation %s->%s(%s): %w", r.From, r.To, r.RelationType, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteObservations deletes observations by ids or exact contents for an entity
+func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string, entityName string, ids []int64, contents []string) (int64, error) {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(entityName) == "" {
+		return 0, fmt.Errorf("entityName cannot be empty")
+	}
+	if len(ids) == 0 && len(contents) == 0 {
+		// delete all for entity
+		res, err := db.ExecContext(ctx, "DELETE FROM observations WHERE entity_name = ?", entityName)
+		if err != nil {
+			return 0, fmt.Errorf("failed to delete observations: %w", err)
+		}
+		return res.RowsAffected()
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	var total int64
+	if len(ids) > 0 {
+		placeholders := strings.Repeat("?,", len(ids))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]interface{}, 0, len(ids)+1)
+		args = append(args, entityName)
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND id IN (%s)", placeholders)
+		res, err := tx.ExecContext(ctx, q, args...)
+		if err != nil {
+			return 0, fmt.Errorf("failed to delete observations by id: %w", err)
+		}
+		ra, _ := res.RowsAffected()
+		total += ra
+	}
+	if len(contents) > 0 {
+		placeholders := strings.Repeat("?,", len(contents))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]interface{}, 0, len(contents)+1)
+		args = append(args, entityName)
+		for _, c := range contents {
+			args = append(args, c)
+		}
+		q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND content IN (%s)", placeholders)
+		res, err := tx.ExecContext(ctx, q, args...)
+		if err != nil {
+			return 0, fmt.Errorf("failed to delete observations by content: %w", err)
+		}
+		ra, _ := res.RowsAffected()
+		total += ra
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // GetRelationsForEntities retrieves relations for a list of entities
 func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName string, entities []apptype.Entity) ([]apptype.Relation, error) {
 	db, err := dm.getDB(projectName)
@@ -639,7 +887,7 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 	}
 
 	if len(entities) == 0 {
-		return nil, nil
+		return []apptype.Relation{}, nil
 	}
 
 	entityNames := make([]string, len(entities))
@@ -668,7 +916,7 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 	}
 	defer rows.Close()
 
-	var relations []apptype.Relation
+	relations := make([]apptype.Relation, 0)
 	for rows.Next() {
 		var source, target, relationType string
 		if err := rows.Scan(&source, &target, &relationType); err != nil {
@@ -685,8 +933,8 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 }
 
 // ReadGraph retrieves recent entities and their relations
-func (dm *DBManager) ReadGraph(ctx context.Context, projectName string) ([]apptype.Entity, []apptype.Relation, error) {
-	entities, err := dm.GetRecentEntities(ctx, projectName, 10)
+func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
+	entities, err := dm.GetRecentEntities(ctx, projectName, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get recent entities: %w", err)
 	}
@@ -709,7 +957,63 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 		if len(q) == 0 {
 			return nil, nil, fmt.Errorf("vector query cannot be empty")
 		}
-		results, searchErr := dm.SearchSimilar(ctx, projectName, q, 5)
+		results, searchErr := dm.SearchSimilar(ctx, projectName, q, 5, 0)
+		if searchErr != nil {
+			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+		}
+		entities = make([]apptype.Entity, len(results))
+		for i, result := range results {
+			entities[i] = result.Entity
+		}
+	case []float64:
+		if len(q) == 0 {
+			return nil, nil, fmt.Errorf("vector query cannot be empty")
+		}
+		// Convert []float64 -> []float32
+		vec := make([]float32, len(q))
+		for i, v := range q {
+			vec[i] = float32(v)
+		}
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, 5, 0)
+		if searchErr != nil {
+			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+		}
+		entities = make([]apptype.Entity, len(results))
+		for i, result := range results {
+			entities[i] = result.Entity
+		}
+	case []interface{}:
+		if len(q) == 0 {
+			return nil, nil, fmt.Errorf("vector query cannot be empty")
+		}
+		vec := make([]float32, len(q))
+		for i, v := range q {
+			switch n := v.(type) {
+			case float64:
+				vec[i] = float32(n)
+			case float32:
+				vec[i] = n
+			case int:
+				vec[i] = float32(n)
+			case int64:
+				vec[i] = float32(n)
+			case json.Number:
+				f, convErr := n.Float64()
+				if convErr != nil {
+					return nil, nil, fmt.Errorf("invalid vector element at index %d: %v", i, convErr)
+				}
+				vec[i] = float32(f)
+			case string:
+				f, convErr := strconv.ParseFloat(n, 64)
+				if convErr != nil {
+					return nil, nil, fmt.Errorf("invalid numeric string at index %d: %v", i, convErr)
+				}
+				vec[i] = float32(f)
+			default:
+				return nil, nil, fmt.Errorf("unsupported vector element type at index %d: %T", i, v)
+			}
+		}
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, 5, 0)
 		if searchErr != nil {
 			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
 		}
@@ -726,6 +1030,23 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 			return nil, nil, fmt.Errorf("failed to perform entity search: %w", err)
 		}
 	default:
+		// Attempt to coerce unknown array-like types into a vector
+		if coerced, ok, cerr := coerceToFloat32Slice(query); ok {
+			if len(coerced) == 0 {
+				return nil, nil, fmt.Errorf("vector query cannot be empty")
+			}
+			results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, 5, 0)
+			if searchErr != nil {
+				return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+			}
+			entities = make([]apptype.Entity, len(results))
+			for i, result := range results {
+				entities[i] = result.Entity
+			}
+			// proceed to relation fetch below
+		} else if cerr != nil {
+			return nil, nil, fmt.Errorf("invalid vector query: %v", cerr)
+		}
 		return nil, nil, fmt.Errorf("unsupported query type: %T", query)
 	}
 
@@ -739,6 +1060,100 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 	}
 
 	return entities, relations, nil
+}
+
+// coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32
+func coerceToFloat32Slice(value interface{}) ([]float32, bool, error) {
+	switch v := value.(type) {
+	case []float32:
+		out := make([]float32, len(v))
+		copy(out, v)
+		return out, true, nil
+	case []float64:
+		out := make([]float32, len(v))
+		for i, n := range v {
+			out[i] = float32(n)
+		}
+		return out, true, nil
+	case []int:
+		out := make([]float32, len(v))
+		for i, n := range v {
+			out[i] = float32(n)
+		}
+		return out, true, nil
+	case []int64:
+		out := make([]float32, len(v))
+		for i, n := range v {
+			out[i] = float32(n)
+		}
+		return out, true, nil
+	case []interface{}:
+		out := make([]float32, len(v))
+		for i, elem := range v {
+			switch n := elem.(type) {
+			case float64:
+				out[i] = float32(n)
+			case float32:
+				out[i] = n
+			case int:
+				out[i] = float32(n)
+			case int64:
+				out[i] = float32(n)
+			case json.Number:
+				f, err := n.Float64()
+				if err != nil {
+					return nil, false, fmt.Errorf("invalid json.Number at index %d: %v", i, err)
+				}
+				out[i] = float32(f)
+			case string:
+				f, err := strconv.ParseFloat(n, 64)
+				if err != nil {
+					return nil, false, fmt.Errorf("invalid numeric string at index %d: %v", i, err)
+				}
+				out[i] = float32(f)
+			default:
+				return nil, false, fmt.Errorf("unsupported vector element type at index %d: %T", i, elem)
+			}
+		}
+		return out, true, nil
+	}
+
+	// Try reflection for other slice/array kinds
+	rv := reflect.ValueOf(value)
+	if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+		n := rv.Len()
+		out := make([]float32, n)
+		for i := 0; i < n; i++ {
+			el := rv.Index(i).Interface()
+			switch x := el.(type) {
+			case float64:
+				out[i] = float32(x)
+			case float32:
+				out[i] = x
+			case int:
+				out[i] = float32(x)
+			case int64:
+				out[i] = float32(x)
+			case json.Number:
+				f, err := x.Float64()
+				if err != nil {
+					return nil, false, fmt.Errorf("invalid json.Number at index %d: %v", i, err)
+				}
+				out[i] = float32(f)
+			case string:
+				f, err := strconv.ParseFloat(x, 64)
+				if err != nil {
+					return nil, false, fmt.Errorf("invalid numeric string at index %d: %v", i, err)
+				}
+				out[i] = float32(f)
+			default:
+				return nil, false, fmt.Errorf("unsupported element type at index %d: %T", i, el)
+			}
+		}
+		return out, true, nil
+	}
+
+	return nil, false, nil
 }
 
 // Close closes all database connections

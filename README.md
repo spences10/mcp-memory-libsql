@@ -82,10 +82,22 @@ The server provides the following MCP tools:
 - `create_relations`: Create relations between entities
 - `delete_entity`: Delete an entity and all its associated data
 - `delete_relation`: Delete a specific relation between entities
+- `add_observations`: Append observations to an existing entity
+- `open_nodes`: Retrieve entities by names with optional relations
+
+Planned/Upcoming tools to reach parity with common client configurations:
+
+- `add_observations`: Append observations to an existing entity
+- `delete_entities`: Delete multiple entities by name (bulk)
+- `delete_observations`: Delete observations by id or content
+- `delete_relations` (bulk): Delete multiple relations
+- `open_nodes`: Retrieve entities by names, with optional relations
+- `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
+- `update_relations`: Update relation tuples
 
 ### Using Tools in Multi-Project Mode
 
-When in multi-project mode, all tools accept an optional `projectName` field in their arguments. If `projectName` is not provided, it will use the "default" project.
+When in multi-project mode, all tools accept an optional project context under `projectArgs.projectName`. If not provided, the server uses the "default" project.
 
 **Example `create_entities` call:**
 
@@ -93,7 +105,7 @@ When in multi-project mode, all tools accept an optional `projectName` field in 
 {
   "tool_name": "create_entities",
   "arguments": {
-    "projectName": "my-awesome-project",
+    "projectArgs": { "projectName": "my-awesome-project" },
     "entities": [
       {
         "name": "entity-1",
@@ -104,6 +116,58 @@ When in multi-project mode, all tools accept an optional `projectName` field in 
   }
 }
 ```
+
+**Example `search_nodes` (text) call:**
+
+```json
+{
+  "tool_name": "search_nodes",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "query": "apple"
+  }
+}
+```
+
+**Example `search_nodes` (vector) call (4D default):**
+
+```json
+{
+  "tool_name": "search_nodes",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "query": [0.1, 0.2, 0.3, 0.4]
+  }
+}
+```
+
+**Example `add_observations` call:**
+
+```json
+{
+  "tool_name": "add_observations",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "entityName": "entity-1",
+    "observations": ["new observation 1", "new observation 2"]
+  }
+}
+```
+
+**Example `open_nodes` call:**
+
+```json
+{
+  "tool_name": "open_nodes",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "names": ["entity-1", "entity-2"],
+    "includeRelations": true
+  }
+}
+```
+
+Vector search input: The server accepts vector queries as JSON arrays (e.g., `[0.1, 0.2, 0.3, 0.4]`). Numeric strings like `"0.1"` are also accepted. The default embedding dimension is 4.
 
 ## Development
 
@@ -188,10 +252,7 @@ This configuration runs the server in multi-project mode, managing separate data
 }
 ```
 
-Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual path to the location of your global memory location.
-
-> [!NOTE]\
-> A good location is `/home/user/Documents/memory-bank`
+Remember to replace `/path/to/some/dir/.memory/memory-bank` with the actual directory where you want per-project databases stored. The server will create subdirectories per project and a `libsql.db` inside each.
 
 ## Architecture
 
