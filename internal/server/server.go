@@ -129,6 +129,22 @@ func (s *MCPServer) setupToolHandlers() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for GraphResult (neighbors): %v", err))
 	}
+	walkInputSchema, err := jsonschema.For[apptype.WalkArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for WalkArgs: %v", err))
+	}
+	walkOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for GraphResult (walk): %v", err))
+	}
+	shortestInputSchema, err := jsonschema.For[apptype.ShortestPathArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for ShortestPathArgs: %v", err))
+	}
+	shortestOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for GraphResult (shortest_path): %v", err))
+	}
 
 	createEntitiesAnnotations := mcp.ToolAnnotations{
 		Title: "Create Entities",
@@ -250,6 +266,22 @@ func (s *MCPServer) setupToolHandlers() {
 		InputSchema:  neighborsInputSchema,
 		OutputSchema: neighborsOutputSchema,
 	}, s.handleNeighbors)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "walk",
+		Title:        "Graph Walk",
+		Description:  "Bounded-depth walk from seed entities.",
+		InputSchema:  walkInputSchema,
+		OutputSchema: walkOutputSchema,
+	}, s.handleWalk)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "shortest_path",
+		Title:        "Shortest Path",
+		Description:  "Compute a shortest path between two entities.",
+		InputSchema:  shortestInputSchema,
+		OutputSchema: shortestOutputSchema,
+	}, s.handleShortestPath)
 }
 
 func (s *MCPServer) getProjectName(providedName string) string {
@@ -678,6 +710,46 @@ func (s *MCPServer) handleNeighbors(
 	success = true
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Neighbors fetched"}},
+		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
+	}, nil
+}
+
+func (s *MCPServer) handleWalk(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.WalkArgs],
+) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("walk")
+	var success bool
+	defer func() { done(success) }()
+	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("walk failed: %w", err)
+	}
+	success = true
+	return &mcp.CallToolResultFor[apptype.GraphResult]{
+		Content:           []mcp.Content{&mcp.TextContent{Text: "Walk complete"}},
+		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
+	}, nil
+}
+
+func (s *MCPServer) handleShortestPath(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.ShortestPathArgs],
+) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("shortest_path")
+	var success bool
+	defer func() { done(success) }()
+	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
+	if err != nil {
+		return nil, fmt.Errorf("shortest_path failed: %w", err)
+	}
+	success = true
+	return &mcp.CallToolResultFor[apptype.GraphResult]{
+		Content:           []mcp.Content{&mcp.TextContent{Text: "Shortest path found"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
 	}, nil
 }

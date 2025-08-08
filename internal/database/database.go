@@ -1729,6 +1729,130 @@ func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names
 	return ents, rels, nil
 }
 
+// Walk expands from seed names up to maxDepth using BFS and returns visited entities and edges.
+func (dm *DBManager) Walk(ctx context.Context, projectName string, seeds []string, maxDepth int, direction string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
+	if maxDepth <= 0 {
+		maxDepth = 1
+	}
+	visited := make(map[string]struct{})
+	queue := make([]string, 0, len(seeds))
+	queue = append(queue, seeds...)
+	for _, s := range seeds {
+		visited[s] = struct{}{}
+	}
+	allRels := make([]apptype.Relation, 0)
+	depth := 0
+	curr := queue
+	for depth < maxDepth && len(curr) > 0 {
+		ents, rels, err := dm.GetNeighbors(ctx, projectName, curr, direction, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		allRels = append(allRels, rels...)
+		next := make([]string, 0)
+		for _, e := range ents {
+			if _, ok := visited[e.Name]; ok {
+				continue
+			}
+			visited[e.Name] = struct{}{}
+			next = append(next, e.Name)
+			if limit > 0 && len(visited) >= limit {
+				break
+			}
+		}
+		curr = next
+		depth++
+		if limit > 0 && len(visited) >= limit {
+			break
+		}
+	}
+	// materialize visited entities
+	namesList := make([]string, 0, len(visited))
+	for n := range visited {
+		namesList = append(namesList, n)
+	}
+	ents, err := dm.GetEntities(ctx, projectName, namesList)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ents, allRels, nil
+}
+
+// ShortestPath returns a shortest path as entities and relations using BFS edges.
+// Note: returns subgraph containing the path; if no path found, returns empty slices.
+func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, direction string) ([]apptype.Entity, []apptype.Relation, error) {
+	if from == "" || to == "" || from == to {
+		return []apptype.Entity{}, []apptype.Relation{}, nil
+	}
+	// BFS parents
+	parents := make(map[string]string)
+	visited := make(map[string]bool)
+	q := []string{from}
+	visited[from] = true
+	found := false
+	for len(q) > 0 && !found {
+		level := q
+		q = nil
+		_, rels, err := dm.GetNeighbors(ctx, projectName, level, direction, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Build adjacency from rels by direction
+		next := make([]string, 0)
+		for _, r := range rels {
+			try := func(u, v string) {
+				if !visited[v] {
+					visited[v] = true
+					parents[v] = u
+					next = append(next, v)
+					if v == to {
+						found = true
+					}
+				}
+			}
+			switch strings.ToLower(direction) {
+			case "out":
+				try(r.From, r.To)
+			case "in":
+				try(r.To, r.From)
+			default:
+				try(r.From, r.To)
+				try(r.To, r.From)
+			}
+			if found {
+				break
+			}
+		}
+		q = append(q, next...)
+	}
+	if !found {
+		return []apptype.Entity{}, []apptype.Relation{}, nil
+	}
+	// reconstruct path
+	pathNames := []string{to}
+	cur := to
+	for cur != from {
+		p := parents[cur]
+		pathNames = append(pathNames, p)
+		cur = p
+	}
+	// reverse to get from->to order
+	for i, j := 0, len(pathNames)-1; i < j; i, j = i+1, j-1 {
+		pathNames[i], pathNames[j] = pathNames[j], pathNames[i]
+	}
+	// materialize entities
+	ents, err := dm.GetEntities(ctx, projectName, pathNames)
+	if err != nil {
+		return nil, nil, err
+	}
+	// generate relation edges along path in requested direction
+	pathRels := make([]apptype.Relation, 0, len(pathNames)-1)
+	for i := 0; i+1 < len(pathNames); i++ {
+		pathRels = append(pathRels, apptype.Relation{From: pathNames[i], To: pathNames[i+1], RelationType: "path"})
+	}
+	return ents, pathRels, nil
+}
+
 // ReadGraph retrieves recent entities and their relations
 func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
 	entities, err := dm.GetRecentEntities(ctx, projectName, limit)

@@ -138,3 +138,20 @@ type NeighborsArgs struct {
 	Direction   string      `json:"direction,omitempty" jsonschema:"Which direction of edges to follow: out|in|both (default both)."`
 	Limit       int         `json:"limit,omitempty" jsonschema:"Maximum number of neighbor entities to return (per seed)."`
 }
+
+// WalkArgs represents arguments for bounded-depth graph expansion from seeds.
+type WalkArgs struct {
+	ProjectArgs ProjectArgs `json:"projectArgs,omitempty"`
+	Names       []string    `json:"names" jsonschema:"Seed entity names to start from."`
+	MaxDepth    int         `json:"maxDepth,omitempty" jsonschema:"Maximum hop depth (default 1)."`
+	Direction   string      `json:"direction,omitempty" jsonschema:"out|in|both (default both)."`
+	Limit       int         `json:"limit,omitempty" jsonschema:"Optional limit on entities returned."`
+}
+
+// ShortestPathArgs represents arguments for computing a shortest path between two nodes.
+type ShortestPathArgs struct {
+	ProjectArgs ProjectArgs `json:"projectArgs,omitempty"`
+	From        string      `json:"from" jsonschema:"Source entity name."`
+	To          string      `json:"to" jsonschema:"Target entity name."`
+	Direction   string      `json:"direction,omitempty" jsonschema:"out|in|both (default both)."`
+}
