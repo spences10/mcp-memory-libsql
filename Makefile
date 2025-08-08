@@ -1,16 +1,6 @@
-SHELL := /bin/sh
-
-APP := mcp-memory-libsql-go
-BIN := ./cmd/$(APP)
-
-.PHONY: build test docker
-
-build:
-	CGO_ENABLED=1 go build -o bin/$(APP) $(BIN)
-
-
-
 # Makefile for mcp-memory-libsql-go
+
+SHELL := /bin/sh
 
 # Variables
 BINARY_NAME=mcp-memory-libsql-go
@@ -28,7 +18,7 @@ all: build
 # Build the binary
 .PHONY: build
 build:
-	go build $(LDFLAGS) -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
+	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
 
 # Install dependencies
 .PHONY: deps
@@ -44,6 +34,11 @@ test:
 .PHONY: run
 run: build
 	$(BINARY_LOCATION)
+
+# Build the docker image
+.PHONY: docker
+docker:
+	docker build -t $(BINARY_NAME):local .
 
 # Clean build artifacts
 .PHONY: clean
@@ -67,5 +62,6 @@ help:
 	@echo "  test    - Run tests"
 	@echo "  run     - Build and run the server"
 	@echo "  clean   - Clean build artifacts"
+	@echo "  docker  - Build the docker image"
 	@echo "  install - Install the binary globally"
 	@echo "  help    - Show this help message"

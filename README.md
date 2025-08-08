@@ -307,25 +307,25 @@ The server provides the following MCP tools:
 
 ### Tool Summary
 
-| Tool                | Purpose                                 | Required args                 | Optional args                        | Notes                                       |
-| ------------------- | --------------------------------------- | ----------------------------- | ------------------------------------ | ------------------------------------------- |
-| create_entities     | Create/update entities and observations | `entities[]`                  | `projectArgs`                        | Replaces observations for provided entities |
-| search_nodes        | Text or vector search                   | `query`                       | `projectArgs`, `limit`, `offset`     | Query is string or numeric array            |
-| read_graph          | Recent entities + relations             | –                             | `projectArgs`, `limit`               | Default limit 10                            |
-| create_relations    | Create relations                        | `relations[]`                 | `projectArgs`                        | Inserts source→target with type             |
-| delete_entity       | Delete entity + all data                | `name`                        | `projectArgs`                        | Cascades to observations/relations          |
-| delete_relation     | Delete a relation                       | `source`,`target`,`type`      | `projectArgs`                        | Removes one tuple                           |
-| add_observations    | Append observations                     | `entityName`,`observations[]` | `projectArgs`                        | Does not replace existing                   |
-| open_nodes          | Get entities by names                   | `names[]`                     | `projectArgs`, `includeRelations`    | Fetch relations for returned set            |
-| delete_entities     | Bulk delete entities                    | `names[]`                     | `projectArgs`                        | Transactional bulk delete                   |
-| delete_observations | Delete observations                     | `entityName`                  | `projectArgs`, `ids[]`, `contents[]` | If neither provided, deletes all for entity |
-| delete_relations    | Bulk delete relations                   | `relations[]`                 | `projectArgs`                        | Transactional bulk delete                   |
-| update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                        | Update type/embedding/observations          |
-| update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                        | Delete old + insert new tuple               |
-| health_check        | Server health/info                      | –                             | –                                    | Version, revision, build date, dims         |
-| neighbors           | 1-hop neighbors                         | `names[]`                     | `projectArgs`, `direction`, `limit`  | direction: out|in|both (default both)       |
-| walk                | Graph expansion (BFS)                   | `names[]`                     | `projectArgs`, `maxDepth`, `direction`, `limit` | Bounded-depth walk                 |
-| shortest_path       | Shortest path                           | `from`,`to`                   | `projectArgs`, `direction`           | Returns path entities and edges             |
+| Tool                | Purpose                                 | Required args                 | Optional args                                   | Notes                                       |
+| ------------------- | --------------------------------------- | ----------------------------- | ----------------------------------------------- | ------------------------------------------- |
+| create_entities     | Create/update entities and observations | `entities[]`                  | `projectArgs`                                   | Replaces observations for provided entities |
+| search_nodes        | Text or vector search                   | `query`                       | `projectArgs`, `limit`, `offset`                | Query is string or numeric array            |
+| read_graph          | Recent entities + relations             | –                             | `projectArgs`, `limit`                          | Default limit 10                            |
+| create_relations    | Create relations                        | `relations[]`                 | `projectArgs`                                   | Inserts source→target with type             |
+| delete_entity       | Delete entity + all data                | `name`                        | `projectArgs`                                   | Cascades to observations/relations          |
+| delete_relation     | Delete a relation                       | `source`,`target`,`type`      | `projectArgs`                                   | Removes one tuple                           |
+| add_observations    | Append observations                     | `entityName`,`observations[]` | `projectArgs`                                   | Does not replace existing                   |
+| open_nodes          | Get entities by names                   | `names[]`                     | `projectArgs`, `includeRelations`               | Fetch relations for returned set            |
+| delete_entities     | Bulk delete entities                    | `names[]`                     | `projectArgs`                                   | Transactional bulk delete                   |
+| delete_observations | Delete observations                     | `entityName`                  | `projectArgs`, `ids[]`, `contents[]`            | If neither provided, deletes all for entity |
+| delete_relations    | Bulk delete relations                   | `relations[]`                 | `projectArgs`                                   | Transactional bulk delete                   |
+| update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                                   | Update type/embedding/observations          |
+| update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                                   | Delete old + insert new tuple               |
+| health_check        | Server health/info                      | –                             | –                                               | Version, revision, build date, dims         |
+| neighbors           | 1-hop neighbors                         | `names[]`                     | `projectArgs`, `direction`, `limit`             | direction: out                              | in | both (default both) |
+| walk                | Graph expansion (BFS)                   | `names[]`                     | `projectArgs`, `maxDepth`, `direction`, `limit` | Bounded-depth walk                          |
+| shortest_path       | Shortest path                           | `from`,`to`                   | `projectArgs`, `direction`                      | Returns path entities and edges             |
 
 #### Metrics
 

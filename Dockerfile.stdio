@@ -1,10 +1,10 @@
 # Multi-stage Dockerfile for mcp-memory-libsql-go
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.24.3-alpine AS build
 WORKDIR /src
-RUN apk add --no-cache ca-certificates git build-base
+RUN apk add --no-cache ca-certificates git build-base musl-dev gcc sqlite-dev g++
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod tidy
 COPY . .
 # Build static binary
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/mcp-memory-libsql-go ./cmd/mcp-memory-libsql-go

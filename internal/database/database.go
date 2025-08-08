@@ -185,6 +185,23 @@ func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
 	dm.provider = p
 }
 
+// EnableHybridSearch enables hybrid search strategy with custom weights and k.
+func (dm *DBManager) EnableHybridSearch(textWeight, vectorWeight, rrfK float64) {
+	if textWeight <= 0 {
+		textWeight = 0.4
+	}
+	if vectorWeight <= 0 {
+		vectorWeight = 0.6
+	}
+	if rrfK <= 0 {
+		rrfK = 60
+	}
+	dm.search = &hybridSearchStrategy{dm: dm, textWeight: textWeight, vectorWeight: vectorWeight, rrfK: rrfK}
+}
+
+// DisableHybridSearch restores default (built-in) search behavior.
+func (dm *DBManager) DisableHybridSearch() { dm.search = nil }
+
 // PoolStats returns aggregate pool stats across known project DBs.
 func (dm *DBManager) PoolStats() (inUse int, idle int) {
 	dm.mu.RLock()
