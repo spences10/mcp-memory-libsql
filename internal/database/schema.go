@@ -38,9 +38,12 @@ func dynamicSchema(embeddingDims int) []string {
 
 		// Create indexes
 		`CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)`,
+		`CREATE INDEX IF NOT EXISTS idx_entities_created_at ON entities(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_name)`,
 		`CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source)`,
 		`CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target)`,
+		`CREATE INDEX IF NOT EXISTS idx_relations_src_tgt_type ON relations(source, target, relation_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_relations_type_source ON relations(relation_type, source)`,
 
 		// Create vector index for similarity search
 		`CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding))`,

@@ -1,3 +1,19 @@
+SHELL := /bin/sh
+
+APP := mcp-memory-libsql-go
+BIN := ./cmd/$(APP)
+
+.PHONY: build test docker
+
+build:
+	CGO_ENABLED=0 go build -o bin/$(APP) $(BIN)
+
+test:
+	go test ./...
+
+docker:
+	docker build -t $(APP):local .
+
 # Makefile for mcp-memory-libsql-go
 
 # Variables

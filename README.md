@@ -29,6 +29,7 @@ And more!
 - **Knowledge Graph**: Store entities, observations, and relations
 - **Multiple Database Support**: Works with local files and remote libSQL servers
 - **Multi-Project Support**: Optionally, run in a mode that manages separate databases for multiple projects.
+- **Metrics (optional)**: No-op by default; enable Prometheus exporter with `METRICS_PROMETHEUS=true`
 
 ## Installation
 
@@ -65,6 +66,20 @@ LIBSQL_AUTH_TOKEN=your-token \
 ```bash
 ./mcp-memory-libsql-go -transport sse -addr :8080 -sse-endpoint /sse
 # Connect with an SSE-capable MCP client to http://localhost:8080/sse
+```
+
+### Docker
+
+Build and run a minimal image with volume at `/data` and optional metrics endpoint:
+
+```bash
+make docker
+
+docker run --rm -p 8080:8080 -p 9090:9090 \
+  -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
+  -e EMBEDDING_DIMS=384 \
+  -v $(pwd)/data:/data \
+  mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
 ```
 
 #### Example (Go) SSE client
@@ -130,6 +145,8 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 - `DB_MAX_IDLE_CONNS`: Max idle DB connections (optional)
 - `DB_CONN_MAX_IDLE_SEC`: Connection max idle time in seconds (optional)
 - `DB_CONN_MAX_LIFETIME_SEC`: Connection max lifetime in seconds (optional)
+- `METRICS_PROMETHEUS`: If set (e.g., `true`), expose Prometheus metrics
+- `METRICS_ADDR`: Metrics HTTP address (default `:9090`) exposing `/metrics` and `/healthz`
 
 ### Running the Server
 
@@ -192,6 +209,12 @@ The server provides the following MCP tools:
 | update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                        | Update type/embedding/observations          |
 | update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                        | Delete old + insert new tuple               |
 | health_check        | Server health/info                      | –                             | –                                    | Version, revision, build date, dims         |
+
+#### Metrics
+
+- Set `METRICS_PROMETHEUS=true` to expose `/metrics` and `/healthz` on `METRICS_ADDR` (default `:9090`).
+- DB hot paths and tool handlers are instrumented with counters and latency histograms.
+- If metrics are disabled, a no-op implementation is used.
 
 > We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
 

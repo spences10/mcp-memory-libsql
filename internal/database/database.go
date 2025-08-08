@@ -20,6 +20,7 @@ import (
 	_ "github.com/tursodatabase/go-libsql"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
 const defaultProject = "default"
@@ -32,6 +33,11 @@ type DBManager struct {
 	// stmtCache holds prepared statements per project DB: project -> (sql -> *Stmt)
 	stmtCache map[string]map[string]*sql.Stmt
 	stmtMu    sync.RWMutex
+	// caps holds runtime-detected optional capabilities
+	caps struct {
+		checked    bool
+		vectorTopK bool
+	}
 }
 
 // Config returns a copy of the database configuration
@@ -44,6 +50,9 @@ func (dm *DBManager) Config() Config {
 
 // NewDBManager creates a new database manager
 func NewDBManager(config *Config) (*DBManager, error) {
+	if config.EmbeddingDims <= 0 || config.EmbeddingDims > 65536 {
+		return nil, fmt.Errorf("{\"error\":{\"code\":\"INVALID_EMBEDDING_DIMS\",\"message\":\"EMBEDDING_DIMS must be between 1 and 65536 inclusive\",\"value\":%d}}", config.EmbeddingDims)
+	}
 	manager := &DBManager{
 		config:    config,
 		dbs:       make(map[string]*sql.DB),
@@ -151,6 +160,8 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
 	}
 	dm.stmtMu.Unlock()
+	// Detect optional capabilities once
+	dm.detectCapabilities(context.Background(), newDb)
 	return newDb, nil
 }
 
@@ -182,6 +193,9 @@ func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db
 
 // initialize creates tables and indexes if they don't exist
 func (dm *DBManager) initialize(db *sql.DB) error {
+	done := metrics.TimeOp("db_initialize")
+	success := false
+	defer func() { done(success) }()
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction for initialization: %w", err)
@@ -195,7 +209,29 @@ func (dm *DBManager) initialize(db *sql.DB) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
+}
+
+// detectCapabilities probes presence of vector_top_k and records flags.
+func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
+	dm.mu.Lock()
+	if dm.caps.checked {
+		dm.mu.Unlock()
+		return
+	}
+	dm.mu.Unlock()
+
+	zero := dm.vectorZeroString()
+	// Attempt to call vector_top_k; if it errors with no-such-function, it's unavailable
+	_, err := db.QueryContext(ctx, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
+	dm.mu.Lock()
+	dm.caps.vectorTopK = (err == nil)
+	dm.caps.checked = true
+	dm.mu.Unlock()
 }
 
 // vectorZeroString builds a zero vector string for current embedding dims
@@ -272,6 +308,9 @@ func (dm *DBManager) ExtractVector(ctx context.Context, embedding []byte) ([]flo
 
 // CreateEntities creates or updates entities with their observations
 func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, entities []apptype.Entity) error {
+	done := metrics.TimeOp("db_create_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -361,11 +400,15 @@ func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, ent
 		}
 	}
 
+	success = true
 	return nil
 }
 
 // UpdateEntities applies partial updates to entities
 func (dm *DBManager) UpdateEntities(ctx context.Context, projectName string, updates []apptype.UpdateEntitySpec) error {
+	done := metrics.TimeOp("db_update_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -438,11 +481,18 @@ func (dm *DBManager) UpdateEntities(ctx context.Context, projectName string, upd
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // UpdateRelations updates relation tuples via delete/insert
 func (dm *DBManager) UpdateRelations(ctx context.Context, projectName string, updates []apptype.UpdateRelationChange) error {
+	done := metrics.TimeOp("db_update_relations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -476,11 +526,18 @@ func (dm *DBManager) UpdateRelations(ctx context.Context, projectName string, up
 			return fmt.Errorf("failed to insert new relation: %w", err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // SearchSimilar performs vector similarity search
 func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embedding []float32, limit int, offset int) ([]apptype.SearchResult, error) {
+	done := metrics.TimeOp("db_search_similar")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -496,20 +553,61 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 	}
 	zeroString := dm.vectorZeroString()
 
-	query := `SELECT e.name, e.entity_type, e.embedding,
+	// Prefer vector_top_k if available; fallback to exact ORDER BY path
+	dm.mu.RLock()
+	useTopK := dm.caps.vectorTopK
+	dm.mu.RUnlock()
+
+	var rows *sql.Rows
+	if useTopK {
+		k := limit + offset
+		if k <= 0 {
+			k = limit
+		}
+		topK := `WITH vt AS (
+            SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), ?)
+        )
+        SELECT e.name, e.entity_type, e.embedding,
+               vector_distance_cos(e.embedding, vector32(?)) as distance
+        FROM vt JOIN entities e ON e.rowid = vt.id
+        WHERE e.embedding IS NOT NULL AND e.embedding != vector32(?)
+        ORDER BY distance ASC
+        LIMIT ? OFFSET ?`
+		stmt, perr := dm.getPreparedStmt(ctx, projectName, db, topK)
+		if perr != nil {
+			return nil, perr
+		}
+		rows, err = stmt.QueryContext(ctx, vectorString, k, vectorString, zeroString, limit, offset)
+		if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such function: vector_top_k") {
+			// downgrade capability and fall back
+			dm.mu.Lock()
+			dm.caps.vectorTopK = false
+			dm.mu.Unlock()
+			useTopK = false
+		} else if err != nil {
+			return nil, fmt.Errorf("failed ANN search: %w", err)
+		}
+	}
+	if !useTopK {
+		query := `SELECT e.name, e.entity_type, e.embedding,
                vector_distance_cos(e.embedding, vector32(?)) as distance
         FROM entities e
         WHERE e.embedding IS NOT NULL
         AND e.embedding != vector32(?)
         ORDER BY distance ASC
         LIMIT ? OFFSET ?`
-
-	stmt, err := dm.getPreparedStmt(ctx, projectName, db, query)
-	if err != nil {
-		return nil, err
+		stmt, perr := dm.getPreparedStmt(ctx, projectName, db, query)
+		if perr != nil {
+			return nil, perr
+		}
+		rows, err = stmt.QueryContext(ctx, vectorString, zeroString, limit, offset)
 	}
-	rows, err := stmt.QueryContext(ctx, vectorString, zeroString, limit, offset)
 	if err != nil {
+		// Structured error when vector functions unsupported
+		low := strings.ToLower(err.Error())
+		if strings.Contains(low, "no such function: vector_distance_cos") || strings.Contains(low, "no such function: vector32") {
+			return nil, fmt.Errorf("{\"error\":{\"code\":\"VECTOR_SEARCH_UNSUPPORTED\",\"message\":\"Vector search functions are unavailable in this libSQL build\"}}")
+		}
 		return nil, fmt.Errorf("failed to execute similarity search: %w", err)
 	}
 	defer rows.Close()
@@ -552,11 +650,15 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 		return nil, fmt.Errorf("error iterating search results: %w", err)
 	}
 
+	success = true
 	return searchResults, nil
 }
 
 // getEntityObservations retrieves all observations for an entity
 func (dm *DBManager) getEntityObservations(ctx context.Context, projectName string, entityName string) ([]string, error) {
+	done := metrics.TimeOp("db_get_entity_observations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -581,11 +683,18 @@ func (dm *DBManager) getEntityObservations(ctx context.Context, projectName stri
 		observations = append(observations, content)
 	}
 
-	return observations, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	success = true
+	return observations, nil
 }
 
 // GetEntity retrieves a single entity by name
 func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name string) (*apptype.Entity, error) {
+	done := metrics.TimeOp("db_get_entity")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -617,6 +726,7 @@ func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name str
 		return nil, fmt.Errorf("failed to extract vector: %w", err)
 	}
 
+	success = true
 	return &apptype.Entity{
 		Name:         entityName,
 		EntityType:   entityType,
@@ -627,6 +737,9 @@ func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name str
 
 // GetEntities retrieves a list of entities by names
 func (dm *DBManager) GetEntities(ctx context.Context, projectName string, names []string) ([]apptype.Entity, error) {
+	done := metrics.TimeOp("db_get_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -669,11 +782,18 @@ func (dm *DBManager) GetEntities(ctx context.Context, projectName string, names 
 			Embedding:    vector,
 		})
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	success = true
+	return results, nil
 }
 
 // AddObservations appends observations to an existing entity
 func (dm *DBManager) AddObservations(ctx context.Context, projectName string, entityName string, observations []string) error {
+	done := metrics.TimeOp("db_add_observations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -712,11 +832,18 @@ func (dm *DBManager) AddObservations(ctx context.Context, projectName string, en
 			return fmt.Errorf("failed to insert observation: %w", err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // SearchEntities performs text-based search
 func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, query string, limit int, offset int) ([]apptype.Entity, error) {
+	done := metrics.TimeOp("db_search_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -783,11 +910,15 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		return nil, fmt.Errorf("error iterating entity results: %w", err)
 	}
 
+	success = true
 	return entities, nil
 }
 
 // GetRecentEntities retrieves recently created entities
 func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, limit int) ([]apptype.Entity, error) {
+	done := metrics.TimeOp("db_recent_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -841,11 +972,15 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, 
 		return nil, fmt.Errorf("error iterating recent entities: %w", err)
 	}
 
+	success = true
 	return entities, nil
 }
 
 // CreateRelations creates multiple relations between entities
 func (dm *DBManager) CreateRelations(ctx context.Context, projectName string, relations []apptype.Relation) error {
+	done := metrics.TimeOp("db_create_relations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -879,11 +1014,18 @@ func (dm *DBManager) CreateRelations(ctx context.Context, projectName string, re
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // DeleteEntity deletes an entity and all associated data
 func (dm *DBManager) DeleteEntity(ctx context.Context, projectName string, name string) error {
+	done := metrics.TimeOp("db_delete_entity")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -923,11 +1065,18 @@ func (dm *DBManager) DeleteEntity(ctx context.Context, projectName string, name 
 		return fmt.Errorf("failed to delete entity: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // DeleteRelation deletes a specific relation
 func (dm *DBManager) DeleteRelation(ctx context.Context, projectName string, source, target, relationType string) error {
+	done := metrics.TimeOp("db_delete_relation")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -953,11 +1102,15 @@ func (dm *DBManager) DeleteRelation(ctx context.Context, projectName string, sou
 		return fmt.Errorf("relation not found: %s -> %s (%s)", source, target, relationType)
 	}
 
+	success = true
 	return nil
 }
 
 // DeleteEntities deletes multiple entities by name within a single transaction
 func (dm *DBManager) DeleteEntities(ctx context.Context, projectName string, names []string) error {
+	done := metrics.TimeOp("db_delete_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -984,11 +1137,18 @@ func (dm *DBManager) DeleteEntities(ctx context.Context, projectName string, nam
 			return fmt.Errorf("failed to delete entity %q: %w", name, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // DeleteRelations deletes multiple relations within a transaction
 func (dm *DBManager) DeleteRelations(ctx context.Context, projectName string, tuples []apptype.Relation) error {
+	done := metrics.TimeOp("db_delete_relations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
@@ -1011,11 +1171,18 @@ func (dm *DBManager) DeleteRelations(ctx context.Context, projectName string, tu
 			return fmt.Errorf("failed to delete relation %s->%s(%s): %w", r.From, r.To, r.RelationType, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 // DeleteObservations deletes observations by ids or exact contents for an entity
 func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string, entityName string, ids []int64, contents []string) (int64, error) {
+	done := metrics.TimeOp("db_delete_observations")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return 0, err
@@ -1029,7 +1196,9 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 		if err != nil {
 			return 0, fmt.Errorf("failed to delete observations: %w", err)
 		}
-		return res.RowsAffected()
+		ra, _ := res.RowsAffected()
+		success = true
+		return ra, nil
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1072,11 +1241,15 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	success = true
 	return total, nil
 }
 
 // GetRelationsForEntities retrieves relations for a list of entities
 func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName string, entities []apptype.Entity) ([]apptype.Relation, error) {
+	done := metrics.TimeOp("db_get_relations_for_entities")
+	success := false
+	defer func() { done(success) }()
 	db, err := dm.getDB(projectName)
 	if err != nil {
 		return nil, err
@@ -1125,7 +1298,11 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 		})
 	}
 
-	return relations, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	success = true
+	return relations, nil
 }
 
 // ReadGraph retrieves recent entities and their relations

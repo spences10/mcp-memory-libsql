@@ -9,6 +9,7 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/database"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -33,6 +34,8 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 		db:     db,
 	}
 
+	// initialize metrics from env (no-op if disabled)
+	metrics.InitFromEnv()
 	mcpServer.setupToolHandlers()
 	return mcpServer
 }
@@ -240,12 +243,17 @@ func (s *MCPServer) handleCreateEntities(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateEntitiesArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("create_entities")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entities := params.Arguments.Entities
 
 	if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to create entities: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -263,6 +271,9 @@ func (s *MCPServer) handleSearchNodes(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.SearchNodesArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("search_nodes")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	query := params.Arguments.Query
 	limit := params.Arguments.Limit
@@ -276,8 +287,10 @@ func (s *MCPServer) handleSearchNodes(
 
 	entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
 	if err != nil {
+		success = false
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -299,6 +312,9 @@ func (s *MCPServer) handleReadGraph(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.ReadGraphArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("read_graph")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	limit := params.Arguments.Limit
 	if limit <= 0 {
@@ -306,8 +322,10 @@ func (s *MCPServer) handleReadGraph(
 	}
 	entities, relations, err := s.db.ReadGraph(ctx, projectName, limit)
 	if err != nil {
+		success = false
 		return nil, fmt.Errorf("read graph failed: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -329,6 +347,9 @@ func (s *MCPServer) handleCreateRelations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.CreateRelationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("create_relations")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	relations := params.Arguments.Relations
 
@@ -342,8 +363,10 @@ func (s *MCPServer) handleCreateRelations(
 	}
 
 	if err := s.db.CreateRelations(ctx, projectName, internalRelations); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to create relations: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -361,12 +384,17 @@ func (s *MCPServer) handleDeleteEntity(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteEntityArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("delete_entity")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	name := params.Arguments.Name
 
 	if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to delete entity: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -384,14 +412,19 @@ func (s *MCPServer) handleDeleteRelation(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteRelationArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("delete_relation")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	source := params.Arguments.Source
 	target := params.Arguments.Target
 	relationType := params.Arguments.Type
 
 	if err := s.db.DeleteRelation(ctx, projectName, source, target, relationType); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to delete relation: %w", err)
 	}
+	success = true
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -409,6 +442,9 @@ func (s *MCPServer) handleAddObservations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.AddObservationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("add_observations")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entityName := params.Arguments.EntityName
 	observations := params.Arguments.Observations
@@ -423,8 +459,10 @@ func (s *MCPServer) handleAddObservations(
 	}
 
 	if err := s.db.AddObservations(ctx, projectName, entityName, observations); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to add observations: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Added %d observations to %q in project %s", len(observations), entityName, projectName)}},
 	}, nil
@@ -436,21 +474,27 @@ func (s *MCPServer) handleOpenNodes(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.OpenNodesArgs],
 ) (*mcp.CallToolResultFor[apptype.GraphResult], error) {
+	done := metrics.TimeTool("open_nodes")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	names := params.Arguments.Names
 	include := params.Arguments.IncludeRelations
 
 	entities, err := s.db.GetEntities(ctx, projectName, names)
 	if err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to get entities: %w", err)
 	}
 	var relations []apptype.Relation
 	if include {
 		relations, err = s.db.GetRelationsForEntities(ctx, projectName, entities)
 		if err != nil {
+			success = false
 			return nil, fmt.Errorf("failed to get relations: %w", err)
 		}
 	}
+	success = true
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Open nodes completed"}},
 		StructuredContent: apptype.GraphResult{Entities: entities, Relations: relations},
@@ -463,11 +507,16 @@ func (s *MCPServer) handleDeleteEntities(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteEntitiesArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("delete_entities")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	names := params.Arguments.Names
 	if err := s.db.DeleteEntities(ctx, projectName, names); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to delete entities: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d entities in project %s", len(names), projectName)}},
 	}, nil
@@ -479,14 +528,19 @@ func (s *MCPServer) handleDeleteRelations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteRelationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("delete_relations")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	tuples := make([]apptype.Relation, len(params.Arguments.Relations))
 	for i, r := range params.Arguments.Relations {
 		tuples[i] = apptype.Relation{From: r.From, To: r.To, RelationType: r.RelationType}
 	}
 	if err := s.db.DeleteRelations(ctx, projectName, tuples); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to delete relations: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d relations in project %s", len(tuples), projectName)}},
 	}, nil
@@ -498,14 +552,19 @@ func (s *MCPServer) handleDeleteObservations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.DeleteObservationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("delete_observations")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entity := params.Arguments.EntityName
 	ids := params.Arguments.IDs
 	contents := params.Arguments.Contents
 	ra, err := s.db.DeleteObservations(ctx, projectName, entity, ids, contents)
 	if err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to delete observations: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d observations from %q in project %s", ra, entity, projectName)}},
 	}, nil
@@ -517,10 +576,15 @@ func (s *MCPServer) handleUpdateEntities(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.UpdateEntitiesArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("update_entities")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to update entities: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d entities in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -532,10 +596,15 @@ func (s *MCPServer) handleUpdateRelations(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.UpdateRelationsArgs],
 ) (*mcp.CallToolResultFor[any], error) {
+	done := metrics.TimeTool("update_relations")
+	var success bool
+	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
+		success = false
 		return nil, fmt.Errorf("failed to update relations: %w", err)
 	}
+	success = true
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d relations in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -547,6 +616,8 @@ func (s *MCPServer) handleHealth(
 	session *mcp.ServerSession,
 	params *mcp.CallToolParamsFor[apptype.HealthArgs],
 ) (*mcp.CallToolResultFor[apptype.HealthResult], error) {
+	done := metrics.TimeTool("health_check")
+	defer func() { done(true) }()
 	cfg := s.db.Config()
 	res := &apptype.HealthResult{
 		Name:          "mcp-memory-libsql-go",

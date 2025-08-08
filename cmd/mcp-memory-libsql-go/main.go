@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/database"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/server"
 )
 
@@ -38,6 +39,9 @@ func main() {
 
 	// Initialize database configuration
 	config := database.NewConfig()
+
+	// Initialize metrics (noop if disabled)
+	metrics.InitFromEnv()
 
 	// Override with command line flags if provided
 	if *libsqlURL != "" {
