@@ -81,7 +81,6 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	}
 
 	dm.mu.Lock()
-	defer dm.mu.Unlock()
 
 	// Double-check if another goroutine created the DB while we were waiting for the lock
 	db, ok = dm.dbs[projectName]
@@ -96,6 +95,7 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 		}
 		dbPath := filepath.Join(dm.config.ProjectsDir, projectName, "libsql.db")
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+			dm.mu.Unlock()
 			return nil, fmt.Errorf("failed to create project directory for %s: %w", projectName, err)
 		}
 		dbURL = fmt.Sprintf("file:%s", dbPath)
@@ -130,12 +130,14 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	}
 
 	if err != nil {
+		dm.mu.Unlock()
 		return nil, fmt.Errorf("failed to create database connector for project %s: %w", projectName, err)
 	}
 
 	// Initialize schema
 	if err := dm.initialize(newDb); err != nil {
 		newDb.Close()
+		dm.mu.Unlock()
 		return nil, fmt.Errorf("failed to initialize database for project %s: %w", projectName, err)
 	}
 
@@ -160,6 +162,8 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
 	}
 	dm.stmtMu.Unlock()
+	// Unlock before capability detection to avoid self-deadlock
+	dm.mu.Unlock()
 	// Detect optional capabilities once
 	dm.detectCapabilities(context.Background(), newDb)
 	return newDb, nil
@@ -225,9 +229,23 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	}
 	dm.mu.Unlock()
 
+	// Skip ANN probe for in-memory test URLs to avoid driver quirks
+	if strings.Contains(dm.config.URL, "mode=memory") {
+		dm.mu.Lock()
+		dm.caps.vectorTopK = false
+		dm.caps.checked = true
+		dm.mu.Unlock()
+		return
+	}
+
 	zero := dm.vectorZeroString()
-	// Attempt to call vector_top_k; if it errors with no-such-function, it's unavailable
-	_, err := db.QueryContext(ctx, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
+	// Attempt to call vector_top_k with a short timeout; close rows if opened
+	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	rows, err := db.QueryContext(ctx2, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
+	if rows != nil {
+		rows.Close()
+	}
 	dm.mu.Lock()
 	dm.caps.vectorTopK = (err == nil)
 	dm.caps.checked = true

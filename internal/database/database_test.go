@@ -18,6 +18,8 @@ func setupTestDB(t *testing.T) (*DBManager, func()) {
 	// The `cache=shared` is crucial for sharing the connection across different
 	// calls to `sql.Open` within the same process.
 	config.URL = "file:testdb?mode=memory&cache=shared"
+	// Ensure valid embedding dims to satisfy guard
+	config.EmbeddingDims = 4
 	db, err := NewDBManager(config)
 	require.NoError(t, err)
 
@@ -59,6 +61,7 @@ func TestMultiProject(t *testing.T) {
 	config := &Config{
 		ProjectsDir:      dir,
 		MultiProjectMode: true,
+		EmbeddingDims:    4,
 	}
 
 	db, err := NewDBManager(config)
