@@ -63,6 +63,47 @@ type DeleteObservationsArgs struct {
 	Contents    []string    `json:"contents,omitempty"`
 }
 
+// UpdateEntitiesArgs represents partial updates to entities
+type UpdateEntitiesArgs struct {
+	ProjectArgs ProjectArgs        `json:"projectArgs,omitempty"`
+	Updates     []UpdateEntitySpec `json:"updates"`
+}
+
+type UpdateEntitySpec struct {
+	Name                string    `json:"name"`
+	EntityType          string    `json:"entityType,omitempty"`
+	Embedding           []float32 `json:"embedding,omitempty"`
+	MergeObservations   []string  `json:"mergeObservations,omitempty"`
+	ReplaceObservations []string  `json:"replaceObservations,omitempty"`
+}
+
+// UpdateRelationsArgs represents updates to relation tuples
+type UpdateRelationsArgs struct {
+	ProjectArgs ProjectArgs            `json:"projectArgs,omitempty"`
+	Updates     []UpdateRelationChange `json:"updates"`
+}
+
+type UpdateRelationChange struct {
+	From            string `json:"from"`
+	To              string `json:"to"`
+	RelationType    string `json:"relationType"`
+	NewFrom         string `json:"newFrom,omitempty"`
+	NewTo           string `json:"newTo,omitempty"`
+	NewRelationType string `json:"newRelationType,omitempty"`
+}
+
+// Health
+type HealthArgs struct{}
+
+type HealthResult struct {
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	Revision      string `json:"revision"`
+	BuildDate     string `json:"buildDate"`
+	MultiProject  bool   `json:"multiProject"`
+	EmbeddingDims int    `json:"embeddingDims"`
+}
+
 // ReadGraphArgs represents the arguments for the read_graph tool
 type ReadGraphArgs struct {
 	ProjectArgs ProjectArgs `json:"projectArgs,omitempty" jsonschema:"Project context for the operation."`

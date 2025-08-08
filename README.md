@@ -1,3 +1,5 @@
+<!-- [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ZanzyTHEbar-mcp-memory-libsql-go-badge.png)](https://mseep.ai/app/ZanzyTHEbar-mcp-memory-libsql-go) -->
+
 # mcp-memory-libsql-go
 
 A Go implementation of the MCP Memory Server using libSQL for persistent storage with vector search capabilities.
@@ -65,6 +67,31 @@ LIBSQL_AUTH_TOKEN=your-token \
 # Connect with an SSE-capable MCP client to http://localhost:8080/sse
 ```
 
+#### Example (Go) SSE client
+
+```go
+package main
+
+import (
+  "context"
+  "log"
+  "github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func main() {
+  ctx := context.Background()
+  client := mcp.NewClient(&mcp.Implementation{Name: "example-client", Version: "dev"}, nil)
+  transport := mcp.NewSSEClientTransport("http://localhost:8080/sse", nil)
+  session, err := client.Connect(ctx, transport)
+  if err != nil { log.Fatal(err) }
+  defer session.Close()
+
+  tools, err := session.ListTools(ctx, &mcp.ListToolsParams{})
+  if err != nil { log.Fatal(err) }
+  for _, t := range tools.Tools { log.Println("tool:", t.Name) }
+}
+```
+
 ### Multi-project mode
 
 ```bash
@@ -99,6 +126,10 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
   - Remote libSQL: `libsql://your-db.turso.io`
 - `LIBSQL_AUTH_TOKEN`: Authentication token for remote databases
 - `EMBEDDING_DIMS`: Embedding dimension (default: `4`). Affects schema and vector operations.
+- `DB_MAX_OPEN_CONNS`: Max open DB connections (optional)
+- `DB_MAX_IDLE_CONNS`: Max idle DB connections (optional)
+- `DB_CONN_MAX_IDLE_SEC`: Connection max idle time in seconds (optional)
+- `DB_CONN_MAX_LIFETIME_SEC`: Connection max lifetime in seconds (optional)
 
 ### Running the Server
 
@@ -139,6 +170,9 @@ The server provides the following MCP tools:
 - `delete_entities`: Delete multiple entities by name (bulk)
 - `delete_observations`: Delete observations by id/content or all for an entity
 - `delete_relations`: Delete multiple relations (bulk)
+- `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
+- `update_relations`: Update relation tuples
+- `health_check`: Return server info and configuration
 
 ### Tool Summary
 
@@ -155,13 +189,15 @@ The server provides the following MCP tools:
 | delete_entities     | Bulk delete entities                    | `names[]`                     | `projectArgs`                        | Transactional bulk delete                   |
 | delete_observations | Delete observations                     | `entityName`                  | `projectArgs`, `ids[]`, `contents[]` | If neither provided, deletes all for entity |
 | delete_relations    | Bulk delete relations                   | `relations[]`                 | `projectArgs`                        | Transactional bulk delete                   |
+| update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                        | Update type/embedding/observations          |
+| update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                        | Delete old + insert new tuple               |
+| health_check        | Server health/info                      | –                             | –                                    | Version, revision, build date, dims         |
 
 > We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
 
 Planned/Upcoming tools:
 
-- `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
-- `update_relations`: Update relation tuples
+– (none for now) –
 
 ### Using Tools in Multi-Project Mode
 
@@ -249,6 +285,59 @@ Pagination parameters:
     "ids": [1, 2],
     "contents": ["exact observation text"]
   }
+}
+```
+
+**Example `update_entities` call:**
+
+```json
+{
+  "tool_name": "update_entities",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "updates": [
+      {
+        "name": "entity-1",
+        "entityType": "type-b",
+        "embedding": [0.1, 0.2, 0.3, 0.4],
+        "mergeObservations": ["added obs"],
+        "replaceObservations": []
+      },
+      {
+        "name": "entity-2",
+        "replaceObservations": ["only this obs"]
+      }
+    ]
+  }
+}
+```
+
+**Example `update_relations` call:**
+
+```json
+{
+  "tool_name": "update_relations",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "updates": [
+      {
+        "from": "a",
+        "to": "b",
+        "relationType": "r1",
+        "newTo": "c",
+        "newRelationType": "r2"
+      }
+    ]
+  }
+}
+```
+
+**Example `health_check` call:**
+
+```json
+{
+  "tool_name": "health_check",
+  "arguments": {}
 }
 ```
 

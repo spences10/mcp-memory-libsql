@@ -12,6 +12,10 @@ type Config struct {
 	ProjectsDir      string
 	MultiProjectMode bool
 	EmbeddingDims    int
+	MaxOpenConns     int
+	MaxIdleConns     int
+	ConnMaxIdleSec   int
+	ConnMaxLifeSec   int
 }
 
 // NewConfig creates a new Config from environment variables
@@ -30,9 +34,38 @@ func NewConfig() *Config {
 		}
 	}
 
+	maxOpen := 0
+	if v := os.Getenv("DB_MAX_OPEN_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			maxOpen = n
+		}
+	}
+	maxIdle := 0
+	if v := os.Getenv("DB_MAX_IDLE_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			maxIdle = n
+		}
+	}
+	idleSec := 0
+	if v := os.Getenv("DB_CONN_MAX_IDLE_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			idleSec = n
+		}
+	}
+	lifeSec := 0
+	if v := os.Getenv("DB_CONN_MAX_LIFETIME_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			lifeSec = n
+		}
+	}
+
 	return &Config{
-		URL:           url,
-		AuthToken:     authToken,
-		EmbeddingDims: dims,
+		URL:            url,
+		AuthToken:      authToken,
+		EmbeddingDims:  dims,
+		MaxOpenConns:   maxOpen,
+		MaxIdleConns:   maxIdle,
+		ConnMaxIdleSec: idleSec,
+		ConnMaxLifeSec: lifeSec,
 	}
 }

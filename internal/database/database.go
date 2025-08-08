@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/tursodatabase/go-libsql"
 
@@ -28,6 +29,14 @@ type DBManager struct {
 	config *Config
 	dbs    map[string]*sql.DB
 	mu     sync.RWMutex
+}
+
+// Config returns a copy of the database configuration
+func (dm *DBManager) Config() Config {
+	if dm == nil || dm.config == nil {
+		return Config{}
+	}
+	return *dm.config
 }
 
 // NewDBManager creates a new database manager
@@ -115,6 +124,20 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	if err := dm.initialize(newDb); err != nil {
 		newDb.Close()
 		return nil, fmt.Errorf("failed to initialize database for project %s: %w", projectName, err)
+	}
+
+	// Apply connection pool tuning from config
+	if dm.config.MaxOpenConns > 0 {
+		newDb.SetMaxOpenConns(dm.config.MaxOpenConns)
+	}
+	if dm.config.MaxIdleConns > 0 {
+		newDb.SetMaxIdleConns(dm.config.MaxIdleConns)
+	}
+	if dm.config.ConnMaxIdleSec > 0 {
+		newDb.SetConnMaxIdleTime(time.Duration(dm.config.ConnMaxIdleSec) * time.Second)
+	}
+	if dm.config.ConnMaxLifeSec > 0 {
+		newDb.SetConnMaxLifetime(time.Duration(dm.config.ConnMaxLifeSec) * time.Second)
 	}
 
 	dm.dbs[projectName] = newDb
@@ -303,6 +326,121 @@ func (dm *DBManager) CreateEntities(ctx context.Context, projectName string, ent
 	}
 
 	return nil
+}
+
+// UpdateEntities applies partial updates to entities
+func (dm *DBManager) UpdateEntities(ctx context.Context, projectName string, updates []apptype.UpdateEntitySpec) error {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return err
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, u := range updates {
+		if strings.TrimSpace(u.Name) == "" {
+			return fmt.Errorf("update missing entity name")
+		}
+		// Ensure entity exists
+		var exists string
+		if err := tx.QueryRowContext(ctx, "SELECT name FROM entities WHERE name = ?", u.Name).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("entity not found: %s", u.Name)
+			}
+			return fmt.Errorf("failed to lookup entity %q: %w", u.Name, err)
+		}
+
+		if u.EntityType != "" || len(u.Embedding) > 0 {
+			vecStr, vErr := dm.vectorToString(u.Embedding)
+			if vErr != nil {
+				return fmt.Errorf("embedding conversion failed for %q: %w", u.Name, vErr)
+			}
+			// If embedding not provided, keep existing by setting to current value (use COALESCE)
+			// Here we update both fields if provided; if not, we keep old values.
+			if u.EntityType != "" && len(u.Embedding) > 0 {
+				if _, err := tx.ExecContext(ctx, "UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?", u.EntityType, vecStr, u.Name); err != nil {
+					return fmt.Errorf("failed updating entity %q: %w", u.Name, err)
+				}
+			} else if u.EntityType != "" {
+				if _, err := tx.ExecContext(ctx, "UPDATE entities SET entity_type = ? WHERE name = ?", u.EntityType, u.Name); err != nil {
+					return fmt.Errorf("failed updating entity type %q: %w", u.Name, err)
+				}
+			} else if len(u.Embedding) > 0 {
+				if _, err := tx.ExecContext(ctx, "UPDATE entities SET embedding = vector32(?) WHERE name = ?", vecStr, u.Name); err != nil {
+					return fmt.Errorf("failed updating entity embedding %q: %w", u.Name, err)
+				}
+			}
+		}
+
+		if len(u.ReplaceObservations) > 0 {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM observations WHERE entity_name = ?", u.Name); err != nil {
+				return fmt.Errorf("failed clearing observations for %q: %w", u.Name, err)
+			}
+			for _, obs := range u.ReplaceObservations {
+				if strings.TrimSpace(obs) == "" {
+					continue
+				}
+				if _, err := tx.ExecContext(ctx, "INSERT INTO observations (entity_name, content) VALUES (?, ?)", u.Name, obs); err != nil {
+					return fmt.Errorf("failed inserting observation: %w", err)
+				}
+			}
+		}
+		if len(u.MergeObservations) > 0 {
+			for _, obs := range u.MergeObservations {
+				if strings.TrimSpace(obs) == "" {
+					continue
+				}
+				if _, err := tx.ExecContext(ctx, "INSERT INTO observations (entity_name, content) VALUES (?, ?)", u.Name, obs); err != nil {
+					return fmt.Errorf("failed merging observation: %w", err)
+				}
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// UpdateRelations updates relation tuples via delete/insert
+func (dm *DBManager) UpdateRelations(ctx context.Context, projectName string, updates []apptype.UpdateRelationChange) error {
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return err
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	for _, up := range updates {
+		// delete old tuple
+		if _, err := tx.ExecContext(ctx, "DELETE FROM relations WHERE source = ? AND target = ? AND relation_type = ?", up.From, up.To, up.RelationType); err != nil {
+			return fmt.Errorf("failed to delete old relation: %w", err)
+		}
+		nf := up.NewFrom
+		if nf == "" {
+			nf = up.From
+		}
+		nt := up.NewTo
+		if nt == "" {
+			nt = up.To
+		}
+		nr := up.NewRelationType
+		if nr == "" {
+			nr = up.RelationType
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO relations (source, target, relation_type) VALUES (?, ?, ?)", nf, nt, nr); err != nil {
+			return fmt.Errorf("failed to insert new relation: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // SearchSimilar performs vector similarity search

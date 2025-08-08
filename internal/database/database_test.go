@@ -233,3 +233,47 @@ func TestBulkDeleteAndObservationDeletes(t *testing.T) {
 	_, err = db.GetEntity(ctx, testProject, "b")
 	assert.Error(t, err)
 }
+
+func TestUpdateEntitiesAndRelations(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Seed entities and relation
+	err := db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "x", EntityType: "t1", Observations: []string{"ox1"}},
+		{Name: "y", EntityType: "t1", Observations: []string{"oy1"}},
+	})
+	require.NoError(t, err)
+	err = db.CreateRelations(ctx, testProject, []apptype.Relation{{From: "x", To: "y", RelationType: "r"}})
+	require.NoError(t, err)
+
+	// Update entity type and merge observation
+	err = db.UpdateEntities(ctx, testProject, []apptype.UpdateEntitySpec{
+		{Name: "x", EntityType: "t2", MergeObservations: []string{"ox2"}},
+	})
+	require.NoError(t, err)
+	ex, err := db.GetEntity(ctx, testProject, "x")
+	require.NoError(t, err)
+	assert.Equal(t, "t2", ex.EntityType)
+	assert.Contains(t, ex.Observations, "ox2")
+
+	// Update relation tuple x->y to x->z
+	err = db.CreateEntities(ctx, testProject, []apptype.Entity{{Name: "z", EntityType: "t1", Observations: []string{"oz1"}}})
+	require.NoError(t, err)
+	err = db.UpdateRelations(ctx, testProject, []apptype.UpdateRelationChange{{From: "x", To: "y", RelationType: "r", NewTo: "z"}})
+	require.NoError(t, err)
+	ents, err := db.GetEntities(ctx, testProject, []string{"x", "y", "z"})
+	require.NoError(t, err)
+	rels, err := db.GetRelationsForEntities(ctx, testProject, ents)
+	require.NoError(t, err)
+	// Ensure x->z exists and x->y no longer present
+	foundXZ := false
+	for _, r := range rels {
+		if r.From == "x" && r.To == "z" {
+			foundXZ = true
+		}
+		assert.False(t, r.From == "x" && r.To == "y")
+	}
+	assert.True(t, foundXZ)
+}

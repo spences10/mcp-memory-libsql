@@ -96,6 +96,22 @@ func (s *MCPServer) setupToolHandlers() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for DeleteObservationsArgs: %v", err))
 	}
+	updateEntitiesInputSchema, err := jsonschema.For[apptype.UpdateEntitiesArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for UpdateEntitiesArgs: %v", err))
+	}
+	updateRelationsInputSchema, err := jsonschema.For[apptype.UpdateRelationsArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for UpdateRelationsArgs: %v", err))
+	}
+	healthInputSchema, err := jsonschema.For[apptype.HealthArgs]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for HealthArgs: %v", err))
+	}
+	healthOutputSchema, err := jsonschema.For[apptype.HealthResult]()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create schema for HealthResult: %v", err))
+	}
 
 	createEntitiesAnnotations := mcp.ToolAnnotations{
 		Title: "Create Entities",
@@ -187,6 +203,28 @@ func (s *MCPServer) setupToolHandlers() {
 		InputSchema:  deleteObservationsInputSchema,
 		OutputSchema: anyOutputSchema,
 	}, s.handleDeleteObservations)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "update_entities",
+		Title:        "Update Entities",
+		Description:  "Partially update entities (type/embedding/observations).",
+		InputSchema:  updateEntitiesInputSchema,
+		OutputSchema: anyOutputSchema,
+	}, s.handleUpdateEntities)
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "update_relations",
+		Title:        "Update Relations",
+		Description:  "Update relation tuples via delete/insert.",
+		InputSchema:  updateRelationsInputSchema,
+		OutputSchema: anyOutputSchema,
+	}, s.handleUpdateRelations)
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:         "health_check",
+		Title:        "Health Check",
+		Description:  "Returns server and configuration information.",
+		InputSchema:  healthInputSchema,
+		OutputSchema: healthOutputSchema,
+	}, s.handleHealth)
 }
 
 func (s *MCPServer) getProjectName(providedName string) string {
@@ -470,6 +508,57 @@ func (s *MCPServer) handleDeleteObservations(
 	}
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d observations from %q in project %s", ra, entity, projectName)}},
+	}, nil
+}
+
+// handleUpdateEntities updates entities partially
+func (s *MCPServer) handleUpdateEntities(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.UpdateEntitiesArgs],
+) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
+		return nil, fmt.Errorf("failed to update entities: %w", err)
+	}
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d entities in project %s", len(params.Arguments.Updates), projectName)}},
+	}, nil
+}
+
+// handleUpdateRelations updates relation tuples
+func (s *MCPServer) handleUpdateRelations(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.UpdateRelationsArgs],
+) (*mcp.CallToolResultFor[any], error) {
+	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
+		return nil, fmt.Errorf("failed to update relations: %w", err)
+	}
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d relations in project %s", len(params.Arguments.Updates), projectName)}},
+	}, nil
+}
+
+// handleHealth returns basic server health information
+func (s *MCPServer) handleHealth(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	params *mcp.CallToolParamsFor[apptype.HealthArgs],
+) (*mcp.CallToolResultFor[apptype.HealthResult], error) {
+	cfg := s.db.Config()
+	res := &apptype.HealthResult{
+		Name:          "mcp-memory-libsql-go",
+		Version:       buildinfo.Version,
+		Revision:      buildinfo.Revision,
+		BuildDate:     buildinfo.BuildDate,
+		MultiProject:  cfg.MultiProjectMode,
+		EmbeddingDims: cfg.EmbeddingDims,
+	}
+	return &mcp.CallToolResultFor[apptype.HealthResult]{
+		Content:           []mcp.Content{&mcp.TextContent{Text: "ok"}},
+		StructuredContent: *res,
 	}, nil
 }
 
