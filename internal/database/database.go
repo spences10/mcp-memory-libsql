@@ -185,6 +185,20 @@ func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
 	dm.provider = p
 }
 
+// GetRelations returns all relations where either source or target belongs to the provided
+// entity names. This is a convenience wrapper around GetRelationsForEntities.
+func (dm *DBManager) GetRelations(ctx context.Context, projectName string, entityNames []string) ([]apptype.Relation, error) {
+    if len(entityNames) == 0 {
+        return []apptype.Relation{}, nil
+    }
+    // Build lightweight entity slice for reuse of existing path
+    entities := make([]apptype.Entity, len(entityNames))
+    for i, n := range entityNames {
+        entities[i] = apptype.Entity{Name: n}
+    }
+    return dm.GetRelationsForEntities(ctx, projectName, entities)
+}
+
 // Config returns a copy of the database configuration
 func (dm *DBManager) Config() Config {
 	if dm == nil || dm.config == nil {
