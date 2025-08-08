@@ -2,13 +2,16 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/database"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -111,4 +114,85 @@ func TestSSEServer_ConcurrentClients(t *testing.T) {
 	for i := 0; i < clients; i++ {
 		require.NoError(t, <-errCh)
 	}
+}
+
+func TestSSEServer_ToolCallsE2E(t *testing.T) {
+	cfg := database.NewConfig()
+	cfg.URL = "file:test-e2e-tools?mode=memory&cache=shared"
+	cfg.EmbeddingDims = 4
+	dbm, err := database.NewDBManager(cfg)
+	require.NoError(t, err)
+	defer dbm.Close()
+
+	srv := NewMCPServer(dbm)
+	port, err := pickFreePort()
+	require.NoError(t, err)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	endpoint := "/sse"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.RunSSE(ctx, addr, endpoint) }()
+	time.Sleep(150 * time.Millisecond)
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "e2e-client", Version: "test"}, nil)
+	transport := mcp.NewSSEClientTransport("http://"+addr+endpoint, nil)
+	session, err := client.Connect(ctx, transport)
+	require.NoError(t, err)
+	defer session.Close()
+
+	// 1) create_entities
+	createArgs := apptype.CreateEntitiesArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: "default"},
+		Entities: []apptype.Entity{
+			{Name: "n1", EntityType: "t", Observations: []string{"o1"}},
+			{Name: "n2", EntityType: "t", Observations: []string{"o2"}},
+		},
+	}
+	createRaw, _ := json.Marshal(createArgs)
+	_, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Arguments: json.RawMessage(createRaw)})
+	require.NoError(t, err)
+
+	// 2) search_nodes (text)
+	searchArgs := apptype.SearchNodesArgs{ProjectArgs: apptype.ProjectArgs{ProjectName: "default"}, Query: "n", Limit: 10}
+	searchRaw, _ := json.Marshal(searchArgs)
+	sres, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "search_nodes", Arguments: json.RawMessage(searchRaw)})
+	require.NoError(t, err)
+    // decode structured content
+    gr := decodeStructuredGraphResult(sres)
+	assert.GreaterOrEqual(t, len(gr.Entities), 2)
+
+	// 3) read_graph
+	readArgs := apptype.ReadGraphArgs{ProjectArgs: apptype.ProjectArgs{ProjectName: "default"}, Limit: 10}
+	readRaw, _ := json.Marshal(readArgs)
+	rres, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read_graph", Arguments: json.RawMessage(readRaw)})
+	require.NoError(t, err)
+    gr2 := decodeStructuredGraphResult(rres)
+	assert.GreaterOrEqual(t, len(gr2.Entities), 2)
+}
+
+// decodeStructuredGraphResult attempts to unmarshal the structured content of a CallToolResult
+// into GraphResult, handling the various concrete types used by the SDK.
+func decodeStructuredGraphResult(res *mcp.CallToolResult) apptype.GraphResult {
+    var out apptype.GraphResult
+    if res == nil || res.StructuredContent == nil {
+        return out
+    }
+    switch v := res.StructuredContent.(type) {
+    case json.RawMessage:
+        _ = json.Unmarshal(v, &out)
+    case *json.RawMessage:
+        _ = json.Unmarshal(*v, &out)
+    case []byte:
+        _ = json.Unmarshal(v, &out)
+    case map[string]any:
+        if b, err := json.Marshal(v); err == nil {
+            _ = json.Unmarshal(b, &out)
+        }
+    default:
+        if b, err := json.Marshal(v); err == nil {
+            _ = json.Unmarshal(b, &out)
+        }
+    }
+    return out
 }
