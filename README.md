@@ -68,19 +68,143 @@ LIBSQL_AUTH_TOKEN=your-token \
 # Connect with an SSE-capable MCP client to http://localhost:8080/sse
 ```
 
-### Docker
+### Docker & Docker Compose (0→1 guide)
 
-Build and run a minimal image with volume at `/data` and optional metrics endpoint:
+This section shows exactly how to get the server running in Docker, with or without docker-compose, and how to enable embeddings and hybrid search.
+
+#### Prerequisites
+
+- Docker (v20+) and Docker Compose (v2)
+- Open ports: 8080 (SSE) and 9090 (metrics/health)
+- Disk space for a mounted data volume
+
+#### 1) Build the image
 
 ```bash
 make docker
+```
 
+This builds `mcp-memory-libsql-go:local` and injects version metadata.
+
+#### 2) Create a data directory
+
+```bash
+mkdir -p ./data
+```
+
+#### 3) Choose an embeddings provider (optional but recommended)
+
+Set `EMBEDDINGS_PROVIDER` and provider-specific variables. Also set `EMBEDDING_DIMS` to match your model. Common mappings are listed below in this README.
+
+You can create a `.env` file for Compose or export env vars directly. Example `.env` for OpenAI:
+
+```bash
+cat > .env <<'EOF'
+EMBEDDINGS_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small
+EMBEDDING_DIMS=1536
+METRICS_PROMETHEUS=true
+METRICS_ADDR=:9090
+TRANSPORT=sse
+ADDR=:8080
+SSE_ENDPOINT=/sse
+EOF
+```
+
+> IMPORTANT: `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+
+#### 4) Run with docker-compose (recommended)
+
+The repo includes a `docker-compose.yml` with profiles:
+
+- `single` (default): single database at `/data/libsql.db`
+- `multi`: multi-project mode at `/data/projects/<name>/libsql.db`
+- `ollama`: optional Ollama sidecar
+- `localai`: optional LocalAI sidecar (OpenAI-compatible)
+
+Start single DB SSE server:
+
+```bash
+docker compose --profile single up --build -d
+```
+
+OpenAI quick start (using `.env` above):
+
+```bash
+docker compose --profile single up --build -d
+```
+
+Ollama quick start (sidecar):
+
+```bash
+cat > .env <<'EOF'
+EMBEDDINGS_PROVIDER=ollama
+OLLAMA_HOST=http://ollama:11434
+EMBEDDING_DIMS=768
+TRANSPORT=sse
+EOF
+
+docker compose --profile ollama --profile single up --build -d
+```
+
+LocalAI quick start (sidecar):
+
+```bash
+cat > .env <<'EOF'
+EMBEDDINGS_PROVIDER=localai
+LOCALAI_BASE_URL=http://localai:8080/v1
+LOCALAI_EMBEDDINGS_MODEL=text-embedding-ada-002
+EMBEDDING_DIMS=1536
+TRANSPORT=sse
+EOF
+
+docker compose --profile localai --profile single up --build -d
+```
+
+Multi-project mode:
+
+```bash
+docker compose --profile multi up --build -d
+# exposes on 8081/9091 by default per compose file
+```
+
+Health and metrics:
+
+```bash
+curl -fsS http://localhost:9090/healthz
+curl -fsS http://localhost:9090/metrics | head -n 20
+```
+
+Stop and clean up:
+
+```bash
+docker compose down
+# remove volumes only if you want to delete your data
+docker compose down -v
+```
+
+#### 5) Alternative: plain docker run
+
+```bash
 docker run --rm -p 8080:8080 -p 9090:9090 \
   -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
   -e EMBEDDING_DIMS=768 \
   -v $(pwd)/data:/data \
   mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
 ```
+
+#### Remote libSQL (optional)
+
+Point to a remote libSQL instance:
+
+```bash
+export LIBSQL_URL=libsql://your-db.turso.io
+export LIBSQL_AUTH_TOKEN=your-token
+docker compose --profile single up --build -d
+```
+
+If you later change `EMBEDDING_DIMS` for an existing DB, create a new DB file or run a manual migration to match the new dimensionality.
 
 #### Example (Go) SSE client
 
@@ -546,6 +670,12 @@ go build .
 
 ```bash
 go test ./...
+
+# Optional race detector
+go test -race ./...
+
+# Optional fuzz target (requires Go 1.18+)
+go test -run=Fuzz -fuzz=Fuzz -fuzztime=2s ./internal/database
 ```
 
 ## Client Integration

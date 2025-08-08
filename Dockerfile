@@ -1,18 +1,37 @@
-# Build stage
-FROM golang:1.24.3-alpine AS build
+# We cannot use an Alpine image for building because the go-libsql package uses pre-compiled binaries that were built-against glibc
+
+##### Build stage ###############################################################
+FROM golang:1.24.3 AS build
+
 WORKDIR /src
-RUN apk add --no-cache ca-certificates git build-base musl-dev gcc
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git build-essential gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY go.mod go.sum ./
 RUN go mod tidy
 COPY . .
-# Build static binary
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/mcp-memory-libsql-go ./cmd/mcp-memory-libsql-go
 
-# Base final stage with shared runtime configuration
-FROM alpine:3.20 AS base
-RUN addgroup -S app && adduser -S app -G app
+# Build metadata
+ARG VERSION=dev
+ARG REVISION=dev
+ARG BUILD_DATE
+
+# Build binary with CGO (libsql requires glibc)
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath \
+    -ldflags "-s -w -X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.Version=${VERSION} -X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.Revision=${REVISION} -X github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+    -o /out/mcp-memory-libsql-go ./cmd/mcp-memory-libsql-go
+
+# Base final stage with shared runtime configuration (glibc)
+FROM debian:bookworm-slim AS base
+
+RUN groupadd --system app && useradd --system --gid app --home /app --shell /usr/sbin/nologin app
 WORKDIR /app
-RUN apk add --no-cache ca-certificates tzdata
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates tzdata curl procps && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /out/mcp-memory-libsql-go /usr/local/bin/mcp-memory-libsql-go
 USER app
 
@@ -47,7 +66,7 @@ VOLUME ["/data"]
 EXPOSE 8080 9090
 
 # Healthcheck hits metrics healthz if enabled, otherwise process check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD wget -qO- http://127.0.0.1:9090/healthz || pgrep -x mcp-memory-libsql-go >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD curl -fsS http://127.0.0.1:9090/healthz || pgrep -x mcp-memory-libsql-go >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/mcp-memory-libsql-go"]
 

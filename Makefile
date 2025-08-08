@@ -6,10 +6,22 @@ SHELL := /bin/sh
 BINARY_NAME=mcp-memory-libsql-go
 MAIN_PACKAGE=./cmd/${BINARY_NAME}
 BINARY_LOCATION=$(shell pwd)/bin/$(BINARY_NAME)
+INTEGRATION_TESTER=./cmd/integration-tester
 VERSION ?= $(shell git describe --tags --always --dirty)
 REVISION ?= $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS = -ldflags "-X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.Version=$(VERSION) -X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.Revision=$(REVISION) -X github.com/ZanzyTHEbar/${BINARY_NAME}/internal/buildinfo.BuildDate=$(BUILD_DATE)"
+
+# Docker config
+IMAGE ?= $(BINARY_NAME)
+TAG ?= local
+DOCKER_IMAGE := $(IMAGE):$(TAG)
+ENV_FILE ?=
+ENV_FILE_ARG := $(if $(ENV_FILE),--env-file $(ENV_FILE),)
+PORT_SSE ?= 8080
+PORT_METRICS ?= 9090
+PROFILES ?= single
+PROFILE_FLAGS := $(foreach p,$(PROFILES),--profile $(p))
 
 # Default target
 .PHONY: all
@@ -36,9 +48,92 @@ run: build
 	$(BINARY_LOCATION)
 
 # Build the docker image
-.PHONY: docker
-docker:
-	docker build -t $(BINARY_NAME):local .
+.PHONY: docker docker-build
+docker: docker-build
+docker-build:
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg REVISION=$(REVISION) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_IMAGE) .
+
+.PHONY: docker-rebuild
+docker-rebuild:
+	docker build --no-cache \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg REVISION=$(REVISION) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_IMAGE) .
+
+# Ensure local data directory exists
+.PHONY: data
+data:
+	mkdir -p ./data ./data/projects
+
+# Run the docker image (SSE default)
+.PHONY: docker-run
+docker-run: docker-run-sse
+
+# Run the docker image with sse transport
+.PHONY: docker-run-sse
+docker-run-sse: data
+	docker run --rm -it $(ENV_FILE_ARG) \
+		-p $(PORT_SSE):8080 -p $(PORT_METRICS):9090 \
+		-v $(shell pwd)/data:/data \
+		$(DOCKER_IMAGE) -transport sse -addr :8080 -sse-endpoint /sse
+
+# Run the docker image with stdio transport
+.PHONY: docker-run-stdio
+docker-run-stdio: data
+	docker run --rm -it $(ENV_FILE_ARG) \
+		-v $(shell pwd)/data:/data \
+		$(DOCKER_IMAGE) -transport stdio
+
+# Run the docker image with multi-project mode (SSE)
+.PHONY: docker-run-multi
+docker-run-multi: data
+	docker run --rm -it $(ENV_FILE_ARG) \
+		-p $(PORT_SSE):8080 -p $(PORT_METRICS):9090 \
+		-v $(shell pwd)/data:/data \
+		$(DOCKER_IMAGE) -transport sse -addr :8080 -sse-endpoint /sse -projects-dir /data/projects
+
+# Compose helpers
+.PHONY: compose-up compose-down compose-logs compose-ps
+compose-up:
+	docker compose $(PROFILE_FLAGS) up --build -d
+
+compose-down:
+	docker compose down $(if $(WITH_VOLUMES),-v,)
+
+compose-logs:
+	docker compose logs -f --tail=200 $(if $(SERVICE),$(SERVICE),)
+
+compose-ps:
+	docker compose ps
+
+# Legacy docker-compose aliases (optional)
+.PHONY: docker-compose
+docker-compose: compose-up
+
+# End-to-end docker test workflow
+.PHONY: docker-test
+docker-test: docker-build data
+	# 1) Stand up (compose single profile)
+	docker compose --profile single up --build -d
+	# 2) Wait for health
+	@echo "Waiting for health..."; \
+	for i in $$(seq 1 30); do \
+	  if curl -fsS http://127.0.0.1:9090/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
+	  sleep 1; \
+	  if [ $$i -eq 30 ]; then echo "Health check timed out"; exit 1; fi; \
+	done
+	# 3) Run integration tester against live SSE endpoint
+	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:8080/sse -project default -timeout 45s | tee integration-report.json
+	# 4) Tear down
+	docker compose down
+	# 5) Audit/report
+	@echo "--- Integration Test Report (integration-report.json) ---"; \
+	cat integration-report.json | jq '.' || cat integration-report.json
 
 # Clean build artifacts
 .PHONY: clean
@@ -56,12 +151,23 @@ install:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  all     - Build the project (default)"
-	@echo "  build   - Build the binary"
-	@echo "  deps    - Install dependencies"
-	@echo "  test    - Run tests"
-	@echo "  run     - Build and run the server"
-	@echo "  clean   - Clean build artifacts"
-	@echo "  docker  - Build the docker image"
+	@echo "  all - Build the project (default)"
+	@echo "  build - Build the binary"
+	@echo "  deps - Install dependencies"
+	@echo "  test - Run tests"
+	@echo "  run - Build and run the server"
+	@echo "  clean - Clean build artifacts"
+	@echo "  docker - Build the docker image (alias of docker-build)"
+	@echo "  docker-build - Build the docker image"
+	@echo "  docker-rebuild - Build the docker image with --no-cache"
+	@echo "  docker-run - Run container (SSE, mounts ./data)"
+	@echo "  docker-run-stdio - Run container (stdio)"
+	@echo "  docker-run-multi - Run container (SSE, multi-project mode)"
+	@echo "  docker-test - Run end-to-end docker test workflow"
+	@echo "  compose-up - docker compose up (use PROFILES=single|multi|ollama|localai)"
+	@echo "  compose-down - docker compose down (WITH_VOLUMES=1 to remove volumes)"
+	@echo "  compose-logs - docker compose logs (SERVICE=memory)"
+	@echo "  compose-ps - docker compose ps"
 	@echo "  install - Install the binary globally"
 	@echo "  help    - Show this help message"
+

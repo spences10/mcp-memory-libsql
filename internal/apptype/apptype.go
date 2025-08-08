@@ -2,10 +2,10 @@ package apptype
 
 // Entity represents a node in the knowledge graph
 type Entity struct {
-	Name         string     `json:"name"`
-	EntityType   string     `json:"entityType"`
-	Observations []string   `json:"observations"`
-	Embedding    []float32  `json:"embedding,omitempty"`
+	Name         string    `json:"name"`
+	EntityType   string    `json:"entityType"`
+	Observations []string  `json:"observations"`
+	Embedding    []float32 `json:"embedding,omitempty"`
 }
 
 // Relation represents a directed relationship between two entities

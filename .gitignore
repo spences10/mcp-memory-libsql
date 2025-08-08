@@ -33,3 +33,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+integration-report.json
+database.test
