@@ -20,7 +20,9 @@ func setupTestDB(t *testing.T) (*DBManager, func()) {
 	config.URL = "file:testdb?mode=memory&cache=shared"
 	// Ensure valid embedding dims to satisfy guard
 	config.EmbeddingDims = 4
-	db, err := NewDBManager(config)
+    // Ensure hybrid disabled by default in tests
+    os.Setenv("HYBRID_SEARCH", "")
+    db, err := NewDBManager(config)
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -110,7 +112,7 @@ func setupFileDB(t *testing.T) (*DBManager, string, func()) {
 }
 
 func TestFileDB_CreateAndSearch(t *testing.T) {
-	db, _, cleanup := setupFileDB(t)
+    db, _, cleanup := setupFileDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -121,8 +123,8 @@ func TestFileDB_CreateAndSearch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Text search path
-	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+    // Text search path
+    ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
 	require.NoError(t, err)
 	require.Len(t, ents, 1)
 	assert.Equal(t, "alpha", ents[0].Name)
@@ -130,6 +132,22 @@ func TestFileDB_CreateAndSearch(t *testing.T) {
 	// Vector search path (fallback to exact if ANN unsupported)
 	_, _, err = db.SearchNodes(ctx, testProject, []float32{0.1, 0.2, 0.3, 0.4}, 5, 0)
 	require.NoError(t, err)
+}
+
+func TestHybridSearch_TextOnlyFallback(t *testing.T) {
+    // Hybrid enabled but no provider/dims match -> should degrade to text-only
+    os.Setenv("HYBRID_SEARCH", "true")
+    defer os.Setenv("HYBRID_SEARCH", "")
+    db, cleanup := setupTestDB(t)
+    defer cleanup()
+    ctx := context.Background()
+    require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
+        {Name: "hy-a", EntityType: "k", Observations: []string{"alpha"}},
+        {Name: "hy-b", EntityType: "k", Observations: []string{"beta"}},
+    }))
+    ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+    require.NoError(t, err)
+    require.NotEmpty(t, ents)
 }
 
 func TestFileDB_MultiProject(t *testing.T) {
