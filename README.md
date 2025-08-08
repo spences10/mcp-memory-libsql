@@ -4,7 +4,7 @@ A Go implementation of the MCP Memory Server using libSQL for persistent storage
 
 ## Overview
 
-This project started as a 1:1 feature port of the TypeScript `mcp-memory-libsql` project to Go. However, this project has sense evolved to included much-needed improvements upon the original codebase. 
+This project started as a 1:1 feature port of the TypeScript `mcp-memory-libsql` project to Go. However, this project has sense evolved to included much-needed improvements upon the original codebase.
 
 `mcp-memory-libsql-go` provides a high-performance, persistent memory server for the Model Context Protocol (MCP) using libSQL (a fork of SQLite by Turso) for robust data storage, including vector search capabilities.
 
@@ -37,6 +37,49 @@ make install
 ```
 
 This will compile the binary and install it in a standard directory (e.g., `~/.local/bin` on Linux or `/usr/local/bin` on macOS), which should be in your system's `PATH`.
+
+## Quick Start
+
+### Local (stdio) – single database
+
+```bash
+# default local db at ./libsql.db
+./mcp-memory-libsql-go
+
+# or specify a file
+./mcp-memory-libsql-go -libsql-url file:./my-memory.db
+```
+
+### Remote libSQL (stdio)
+
+```bash
+LIBSQL_URL=libsql://your-db.turso.io \
+LIBSQL_AUTH_TOKEN=your-token \
+./mcp-memory-libsql-go
+```
+
+### SSE transport (HTTP)
+
+```bash
+./mcp-memory-libsql-go -transport sse -addr :8080 -sse-endpoint /sse
+# Connect with an SSE-capable MCP client to http://localhost:8080/sse
+```
+
+### Multi-project mode
+
+```bash
+mkdir -p /path/to/projects
+./mcp-memory-libsql-go -projects-dir /path/to/projects
+# Databases will be created under /path/to/projects/<projectName>/libsql.db
+```
+
+### Configure embedding dimensions
+
+```bash
+EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim embeddings
+```
+
+> Note: Changing `EMBEDDING_DIMS` for an existing DB requires a manual migration or new DB file.
 
 ## Usage
 
@@ -93,14 +136,30 @@ The server provides the following MCP tools:
 - `delete_relation`: Delete a specific relation between entities
 - `add_observations`: Append observations to an existing entity
 - `open_nodes`: Retrieve entities by names with optional relations
-
-Planned/Upcoming tools to reach parity with common client configurations:
-
-- `add_observations`: Append observations to an existing entity
 - `delete_entities`: Delete multiple entities by name (bulk)
-- `delete_observations`: Delete observations by id or content
-- `delete_relations` (bulk): Delete multiple relations
-- `open_nodes`: Retrieve entities by names, with optional relations
+- `delete_observations`: Delete observations by id/content or all for an entity
+- `delete_relations`: Delete multiple relations (bulk)
+
+### Tool Summary
+
+| Tool                | Purpose                                 | Required args                 | Optional args                        | Notes                                       |
+| ------------------- | --------------------------------------- | ----------------------------- | ------------------------------------ | ------------------------------------------- |
+| create_entities     | Create/update entities and observations | `entities[]`                  | `projectArgs`                        | Replaces observations for provided entities |
+| search_nodes        | Text or vector search                   | `query`                       | `projectArgs`, `limit`, `offset`     | Query is string or numeric array            |
+| read_graph          | Recent entities + relations             | –                             | `projectArgs`, `limit`               | Default limit 10                            |
+| create_relations    | Create relations                        | `relations[]`                 | `projectArgs`                        | Inserts source→target with type             |
+| delete_entity       | Delete entity + all data                | `name`                        | `projectArgs`                        | Cascades to observations/relations          |
+| delete_relation     | Delete a relation                       | `source`,`target`,`type`      | `projectArgs`                        | Removes one tuple                           |
+| add_observations    | Append observations                     | `entityName`,`observations[]` | `projectArgs`                        | Does not replace existing                   |
+| open_nodes          | Get entities by names                   | `names[]`                     | `projectArgs`, `includeRelations`    | Fetch relations for returned set            |
+| delete_entities     | Bulk delete entities                    | `names[]`                     | `projectArgs`                        | Transactional bulk delete                   |
+| delete_observations | Delete observations                     | `entityName`                  | `projectArgs`, `ids[]`, `contents[]` | If neither provided, deletes all for entity |
+| delete_relations    | Bulk delete relations                   | `relations[]`                 | `projectArgs`                        | Transactional bulk delete                   |
+
+> We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
+
+Planned/Upcoming tools:
+
 - `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
 - `update_relations`: Update relation tuples
 
@@ -155,6 +214,44 @@ Pagination parameters:
 - `limit` (optional): maximum number of results (default 5 for `search_nodes`, 10 for `read_graph`)
 - `offset` (optional): number of results to skip (for paging)
 
+**Example `delete_entities` (bulk) call:**
+
+```json
+{
+  "tool_name": "delete_entities",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "names": ["entity-1", "entity-2"]
+  }
+}
+```
+
+**Example `delete_relations` (bulk) call:**
+
+```json
+{
+  "tool_name": "delete_relations",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "relations": [{ "from": "a", "to": "b", "relationType": "connected_to" }]
+  }
+}
+```
+
+**Example `delete_observations` call:**
+
+```json
+{
+  "tool_name": "delete_observations",
+  "arguments": {
+    "projectArgs": { "projectName": "my-awesome-project" },
+    "entityName": "entity-1",
+    "ids": [1, 2],
+    "contents": ["exact observation text"]
+  }
+}
+```
+
 **Example `add_observations` call:**
 
 ```json
@@ -181,7 +278,15 @@ Pagination parameters:
 }
 ```
 
-Vector search input: The server accepts vector queries as JSON arrays (e.g., `[0.1, 0.2, 0.3, 0.4]`). Numeric strings like `"0.1"` are also accepted. The default embedding dimension is 4.
+Vector search input: The server accepts vector queries as JSON arrays (e.g., `[0.1, 0.2, 0.3, 0.4]`). Numeric strings like `"0.1"` are also accepted. The default embedding dimension is 4 (configurable via `EMBEDDING_DIMS`).
+
+### Embedding Dimensions
+
+The embedding column type is created as `F32_BLOB(N)`, where `N` comes from `EMBEDDING_DIMS` (default 4). If you change `EMBEDDING_DIMS` for an existing database file, you should create a new database or run a manual migration, as automatic dimensionality migration is not performed.
+
+### Transports: stdio and SSE
+
+This server supports both stdio transport (default) and SSE transport. Use `-transport sse -addr :8080 -sse-endpoint /sse` to run an SSE endpoint. Clients must use an SSE-capable MCP client (e.g., go-sdk `SSEClientTransport`) to connect.
 
 ## Development
 
