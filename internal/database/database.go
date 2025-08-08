@@ -1026,9 +1026,9 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 				dm.caps.fts5 = false
 				dm.mu.Unlock()
 				useFTS = false
-            } else {
-                return nil, fmt.Errorf("failed to execute FTS search: %w", err)
-            }
+			} else {
+				return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+			}
 		}
 	}
 	if !useFTS {
@@ -1047,9 +1047,7 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 			return nil, fmt.Errorf("failed to execute entity search: %w", err)
 		}
 	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute entity search: %w", err)
-	}
+
 	defer rows.Close()
 
 	var entities []apptype.Entity
