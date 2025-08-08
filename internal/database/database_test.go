@@ -159,3 +159,77 @@ func TestReadGraph(t *testing.T) {
 	// Relations might be empty if none were created
 	assert.NotNil(t, relations)
 }
+
+func TestAddObservationsAndOpenNodes(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Create entity
+	err := db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "e1", EntityType: "t", Observations: []string{"o1"}},
+	})
+	require.NoError(t, err)
+
+	// Add observations
+	err = db.AddObservations(ctx, testProject, "e1", []string{"o2", "o3"})
+	require.NoError(t, err)
+
+	// Get entity and check observations grew
+	e, err := db.GetEntity(ctx, testProject, "e1")
+	require.NoError(t, err)
+	assert.Len(t, e.Observations, 3)
+
+	// Create another entity and test GetEntities (open_nodes backend)
+	err = db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "e2", EntityType: "t", Observations: []string{"x"}},
+	})
+	require.NoError(t, err)
+
+	list, err := db.GetEntities(ctx, testProject, []string{"e1", "e2"})
+	require.NoError(t, err)
+	assert.Len(t, list, 2)
+}
+
+func TestBulkDeleteAndObservationDeletes(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Setup two entities and a relation
+	err := db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "a", EntityType: "t", Observations: []string{"oa1", "oa2"}},
+		{Name: "b", EntityType: "t", Observations: []string{"ob1"}},
+	})
+	require.NoError(t, err)
+
+	err = db.CreateRelations(ctx, testProject, []apptype.Relation{{From: "a", To: "b", RelationType: "r"}})
+	require.NoError(t, err)
+
+	// Delete one observation by content
+	ra, err := db.DeleteObservations(ctx, testProject, "a", nil, []string{"oa1"})
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, ra, int64(1))
+	e, err := db.GetEntity(ctx, testProject, "a")
+	require.NoError(t, err)
+	assert.NotContains(t, e.Observations, "oa1")
+
+	// Delete relations in bulk
+	err = db.DeleteRelations(ctx, testProject, []apptype.Relation{{From: "a", To: "b", RelationType: "r"}})
+	require.NoError(t, err)
+
+	// Verify no relations between a and b
+	ents, err := db.GetEntities(ctx, testProject, []string{"a", "b"})
+	require.NoError(t, err)
+	rels, err := db.GetRelationsForEntities(ctx, testProject, ents)
+	require.NoError(t, err)
+	assert.Len(t, rels, 0)
+
+	// Bulk delete entities
+	err = db.DeleteEntities(ctx, testProject, []string{"a", "b"})
+	require.NoError(t, err)
+	_, err = db.GetEntity(ctx, testProject, "a")
+	assert.Error(t, err)
+	_, err = db.GetEntity(ctx, testProject, "b")
+	assert.Error(t, err)
+}

@@ -40,6 +40,9 @@ This will compile the binary and install it in a standard directory (e.g., `~/.l
 - `-libsql-url`: Database URL (default: `file:./libsql.db`). Overrides the `LIBSQL_URL` environment variable.
 - `-auth-token`: Authentication token for remote databases. Overrides the `LIBSQL_AUTH_TOKEN` environment variable.
 - `-projects-dir`: Base directory for projects. Enables multi-project mode. If this is set, `-libsql-url` is ignored.
+- `-transport`: Transport to use: `stdio` (default) or `sse`.
+- `-addr`: Address to listen on when using SSE transport (default `:8080`).
+- `-sse-endpoint`: SSE endpoint path when using SSE transport (default `/sse`).
 
 ### Environment Variables
 
@@ -47,6 +50,7 @@ This will compile the binary and install it in a standard directory (e.g., `~/.l
   - Local file: `file:./path/to/db.sqlite`
   - Remote libSQL: `libsql://your-db.turso.io`
 - `LIBSQL_AUTH_TOKEN`: Authentication token for remote databases
+- `EMBEDDING_DIMS`: Embedding dimension (default: `4`). Affects schema and vector operations.
 
 ### Running the Server
 
@@ -140,6 +144,11 @@ When in multi-project mode, all tools accept an optional project context under `
   }
 }
 ```
+
+Pagination parameters:
+
+- `limit` (optional): maximum number of results (default 5 for `search_nodes`, 10 for `read_graph`)
+- `offset` (optional): number of results to skip (for paging)
 
 **Example `add_observations` call:**
 
