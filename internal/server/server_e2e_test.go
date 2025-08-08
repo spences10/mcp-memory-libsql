@@ -68,47 +68,47 @@ func TestSSEServer_ListTools(t *testing.T) {
 }
 
 func TestSSEServer_ConcurrentClients(t *testing.T) {
-    cfg := database.NewConfig()
-    cfg.URL = "file:test-e2e-concurrent?mode=memory&cache=shared"
-    cfg.EmbeddingDims = 4
-    dbm, err := database.NewDBManager(cfg)
-    require.NoError(t, err)
-    defer dbm.Close()
+	cfg := database.NewConfig()
+	cfg.URL = "file:test-e2e-concurrent?mode=memory&cache=shared"
+	cfg.EmbeddingDims = 4
+	dbm, err := database.NewDBManager(cfg)
+	require.NoError(t, err)
+	defer dbm.Close()
 
-    srv := NewMCPServer(dbm)
+	srv := NewMCPServer(dbm)
 
-    port, err := pickFreePort()
-    require.NoError(t, err)
-    addr := fmt.Sprintf("127.0.0.1:%d", port)
-    endpoint := "/sse"
+	port, err := pickFreePort()
+	require.NoError(t, err)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	endpoint := "/sse"
 
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-    // start SSE server
-    go func() { _ = srv.RunSSE(ctx, addr, endpoint) }()
-    time.Sleep(150 * time.Millisecond)
+	// start SSE server
+	go func() { _ = srv.RunSSE(ctx, addr, endpoint) }()
+	time.Sleep(150 * time.Millisecond)
 
-    // launch multiple concurrent clients
-    const clients = 16
-    errCh := make(chan error, clients)
+	// launch multiple concurrent clients
+	const clients = 16
+	errCh := make(chan error, clients)
 
-    for i := 0; i < clients; i++ {
-        go func() {
-            c := mcp.NewClient(&mcp.Implementation{Name: "e2e-client", Version: "test"}, nil)
-            transport := mcp.NewSSEClientTransport("http://"+addr+endpoint, nil)
-            session, err := c.Connect(ctx, transport)
-            if err != nil {
-                errCh <- err
-                return
-            }
-            defer session.Close()
-            _, err = session.ListTools(ctx, &mcp.ListToolsParams{})
-            errCh <- err
-        }()
-    }
+	for i := 0; i < clients; i++ {
+		go func() {
+			c := mcp.NewClient(&mcp.Implementation{Name: "e2e-client", Version: "test"}, nil)
+			transport := mcp.NewSSEClientTransport("http://"+addr+endpoint, nil)
+			session, err := c.Connect(ctx, transport)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			defer session.Close()
+			_, err = session.ListTools(ctx, &mcp.ListToolsParams{})
+			errCh <- err
+		}()
+	}
 
-    for i := 0; i < clients; i++ {
-        require.NoError(t, <-errCh)
-    }
+	for i := 0; i < clients; i++ {
+		require.NoError(t, <-errCh)
+	}
 }
