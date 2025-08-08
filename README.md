@@ -323,7 +323,7 @@ The server provides the following MCP tools:
 | update_entities     | Partial entity update                   | `updates[]`                   | `projectArgs`                                   | Update type/embedding/observations          |
 | update_relations    | Update relation tuples                  | `updates[]`                   | `projectArgs`                                   | Delete old + insert new tuple               |
 | health_check        | Server health/info                      | –                             | –                                               | Version, revision, build date, dims         |
-| neighbors           | 1-hop neighbors                         | `names[]`                     | `projectArgs`, `direction`, `limit`             | direction: out                              | in | both (default both) |
+| neighbors           | 1-hop neighbors                         | `names[]`                     | `projectArgs`, `direction`, `limit`             | direction: out/in/both (default both)       |
 | walk                | Graph expansion (BFS)                   | `names[]`                     | `projectArgs`, `maxDepth`, `direction`, `limit` | Bounded-depth walk                          |
 | shortest_path       | Shortest path                           | `from`,`to`                   | `projectArgs`, `direction`                      | Returns path entities and edges             |
 
@@ -334,6 +334,15 @@ The server provides the following MCP tools:
 - Additional gauges and counters:
   - `db_pool_gauges{state="in_use|idle"}` observed periodically and on `health_check`
   - `stmt_cache_events_total{op="prepare",result="hit|miss"}` from the prepared statement cache
+
+Recommended Prometheus histogram buckets (example):
+
+```
+# scrape_config for reference only
+histogram_quantile(0.50, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
+histogram_quantile(0.90, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
+histogram_quantile(0.99, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
+```
 - If metrics are disabled, a no-op implementation is used.
 
 > We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
