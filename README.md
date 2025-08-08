@@ -153,7 +153,7 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
   - `gemini` | `google` | `google-gemini` | `google_genai`
   - `vertexai` | `vertex` | `google-vertex`
   - `localai` | `llamacpp` | `llama.cpp`
-  The server still accepts client-supplied embeddings if unset.
+    The server still accepts client-supplied embeddings if unset.
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`, dims 1536; `-large` dims 3072).
 - Ollama: `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL` (default `nomic-embed-text`, dims 768). Example `OLLAMA_HOST=http://localhost:11434`.
 - Google Gemini (Generative Language API): `GOOGLE_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` (default `text-embedding-004`, dims 768).
