@@ -43,7 +43,15 @@ services:
       - LOCALAI_BASE_URL
       - LOCALAI_EMBEDDINGS_MODEL
       - LOCALAI_API_KEY
-    command: ["-transport", "${TRANSPORT:-sse}", "-addr", "${ADDR:-:8080}", "-sse-endpoint", "${SSE_ENDPOINT:-/sse}"]
+    command:
+      [
+        "-transport",
+        "${TRANSPORT:-sse}",
+        "-addr",
+        "${ADDR:-:8080}",
+        "-sse-endpoint",
+        "${SSE_ENDPOINT:-/sse}",
+      ]
     ports:
       - "8080:8080"
       - "9090:9090"
@@ -52,7 +60,11 @@ services:
         source: ./data
         target: /data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9090/healthz || pgrep -x mcp-memory-libsql-go >/dev/null"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:9090/healthz || pgrep -x mcp-memory-libsql-go >/dev/null",
+        ]
       interval: 30s
       timeout: 5s
       start_period: 10s
@@ -62,11 +74,53 @@ services:
   # Optional: Multi-project mode variant (shares image)
   memory-multi:
     image: mcp-memory-libsql-go:local
-    depends_on: [memory]
     environment:
+      # Core DB (optional for multi-project when using local files)
+      - LIBSQL_URL=${LIBSQL_URL}
+      - LIBSQL_AUTH_TOKEN=${LIBSQL_AUTH_TOKEN}
+      # Embeddings
       - EMBEDDING_DIMS=${EMBEDDING_DIMS:-4}
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER}
+      # Pooling
+      - DB_MAX_OPEN_CONNS=${DB_MAX_OPEN_CONNS}
+      - DB_MAX_IDLE_CONNS=${DB_MAX_IDLE_CONNS}
+      - DB_CONN_MAX_IDLE_SEC=${DB_CONN_MAX_IDLE_SEC}
+      - DB_CONN_MAX_LIFETIME_SEC=${DB_CONN_MAX_LIFETIME_SEC}
+      # Hybrid
+      - HYBRID_SEARCH=${HYBRID_SEARCH}
+      - HYBRID_TEXT_WEIGHT=${HYBRID_TEXT_WEIGHT:-0.4}
+      - HYBRID_VECTOR_WEIGHT=${HYBRID_VECTOR_WEIGHT:-0.6}
+      - HYBRID_RRF_K=${HYBRID_RRF_K:-60}
+      # Metrics
       - METRICS_PROMETHEUS=${METRICS_PROMETHEUS:-true}
-    command: ["-transport", "${TRANSPORT:-sse}", "-addr", "${ADDR:-:8080}", "-sse-endpoint", "${SSE_ENDPOINT:-/sse}", "-projects-dir", "/data/projects"]
+      - METRICS_ADDR=${METRICS_ADDR:-:9090}
+      # Transport
+      - TRANSPORT=${TRANSPORT:-sse}
+      - ADDR=${ADDR:-:8080}
+      - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
+      # Provider specifics
+      - OPENAI_API_KEY
+      - OPENAI_EMBEDDINGS_MODEL
+      - OLLAMA_HOST
+      - OLLAMA_EMBEDDINGS_MODEL
+      - GOOGLE_API_KEY
+      - GEMINI_EMBEDDINGS_MODEL
+      - VERTEX_EMBEDDINGS_ENDPOINT
+      - VERTEX_ACCESS_TOKEN
+      - LOCALAI_BASE_URL
+      - LOCALAI_EMBEDDINGS_MODEL
+      - LOCALAI_API_KEY
+    command:
+      [
+        "-transport",
+        "${TRANSPORT:-sse}",
+        "-addr",
+        "${ADDR:-:8080}",
+        "-sse-endpoint",
+        "${SSE_ENDPOINT:-/sse}",
+        "-projects-dir",
+        "/data/projects",
+      ]
     ports:
       - "8081:8080"
       - "9091:9090"
@@ -99,4 +153,3 @@ services:
 volumes:
   ollama: {}
   localai-models: {}
-
