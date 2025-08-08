@@ -62,10 +62,15 @@ func (s *MCPServer) setupToolHandlers() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for ReadGraphArgs: %v", err))
 	}
-	readGraphOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+    readGraphOutputSchema, err := jsonschema.For[apptype.GraphResult]()
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for GraphResult (read): %v", err))
 	}
+    // Create a fresh GraphResult schema for open_nodes to avoid re-resolving the same root
+    openNodesOutputSchema, err := jsonschema.For[apptype.GraphResult]()
+    if err != nil {
+        panic(fmt.Sprintf("failed to create schema for GraphResult (open_nodes): %v", err))
+    }
 	createRelationsInputSchema, err := jsonschema.For[apptype.CreateRelationsArgs]()
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for CreateRelationsArgs: %v", err))
@@ -177,12 +182,12 @@ func (s *MCPServer) setupToolHandlers() {
 		OutputSchema: anyOutputSchema,
 	}, s.handleAddObservations)
 
-	mcp.AddTool(s.server, &mcp.Tool{
+    mcp.AddTool(s.server, &mcp.Tool{
 		Name:         "open_nodes",
 		Title:        "Open Nodes",
 		Description:  "Retrieve entities by names with optional relations.",
 		InputSchema:  openNodesInputSchema,
-		OutputSchema: readGraphOutputSchema,
+        OutputSchema: openNodesOutputSchema,
 	}, s.handleOpenNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
