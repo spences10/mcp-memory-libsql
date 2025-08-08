@@ -29,6 +29,9 @@ type DBManager struct {
 	config *Config
 	dbs    map[string]*sql.DB
 	mu     sync.RWMutex
+	// stmtCache holds prepared statements per project DB: project -> (sql -> *Stmt)
+	stmtCache map[string]map[string]*sql.Stmt
+	stmtMu    sync.RWMutex
 }
 
 // Config returns a copy of the database configuration
@@ -42,8 +45,9 @@ func (dm *DBManager) Config() Config {
 // NewDBManager creates a new database manager
 func NewDBManager(config *Config) (*DBManager, error) {
 	manager := &DBManager{
-		config: config,
-		dbs:    make(map[string]*sql.DB),
+		config:    config,
+		dbs:       make(map[string]*sql.DB),
+		stmtCache: make(map[string]map[string]*sql.Stmt),
 	}
 
 	// If not in multi-project mode, initialize the default database immediately
@@ -141,7 +145,39 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	}
 
 	dm.dbs[projectName] = newDb
+	// initialize statement cache bucket for this project if not exists
+	dm.stmtMu.Lock()
+	if _, ok := dm.stmtCache[projectName]; !ok {
+		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
+	}
+	dm.stmtMu.Unlock()
 	return newDb, nil
+}
+
+// getPreparedStmt returns or prepares and caches a statement for the given project DB
+func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db *sql.DB, sqlText string) (*sql.Stmt, error) {
+	// fast path read
+	dm.stmtMu.RLock()
+	if projCache, ok := dm.stmtCache[projectName]; ok {
+		if stmt, ok2 := projCache[sqlText]; ok2 {
+			dm.stmtMu.RUnlock()
+			return stmt, nil
+		}
+	}
+	dm.stmtMu.RUnlock()
+
+	// prepare and store
+	stmt, err := db.PrepareContext(ctx, sqlText)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	dm.stmtMu.Lock()
+	if _, ok := dm.stmtCache[projectName]; !ok {
+		dm.stmtCache[projectName] = make(map[string]*sql.Stmt)
+	}
+	dm.stmtCache[projectName][sqlText] = stmt
+	dm.stmtMu.Unlock()
+	return stmt, nil
 }
 
 // initialize creates tables and indexes if they don't exist
@@ -460,17 +496,19 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 	}
 	zeroString := dm.vectorZeroString()
 
-	query := `
-		SELECT e.name, e.entity_type, e.embedding,
-			   vector_distance_cos(e.embedding, vector32(?)) as distance
-		FROM entities e
-		WHERE e.embedding IS NOT NULL
+	query := `SELECT e.name, e.entity_type, e.embedding,
+               vector_distance_cos(e.embedding, vector32(?)) as distance
+        FROM entities e
+        WHERE e.embedding IS NOT NULL
         AND e.embedding != vector32(?)
-		ORDER BY distance ASC
-        LIMIT ? OFFSET ?
-	`
+        ORDER BY distance ASC
+        LIMIT ? OFFSET ?`
 
-	rows, err := db.QueryContext(ctx, query, vectorString, zeroString, limit, offset)
+	stmt, err := dm.getPreparedStmt(ctx, projectName, db, query)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.QueryContext(ctx, vectorString, zeroString, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute similarity search: %w", err)
 	}
@@ -524,8 +562,11 @@ func (dm *DBManager) getEntityObservations(ctx context.Context, projectName stri
 		return nil, err
 	}
 
-	rows, err := db.QueryContext(ctx,
-		"SELECT content FROM observations WHERE entity_name = ? ORDER BY id", entityName)
+	stmt, err := dm.getPreparedStmt(ctx, projectName, db, "SELECT content FROM observations WHERE entity_name = ? ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.QueryContext(ctx, entityName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query observations: %w", err)
 	}
@@ -550,8 +591,11 @@ func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name str
 		return nil, err
 	}
 
-	row := db.QueryRowContext(ctx,
-		"SELECT name, entity_type, embedding FROM entities WHERE name = ?", name)
+	stmt, err := dm.getPreparedStmt(ctx, projectName, db, "SELECT name, entity_type, embedding FROM entities WHERE name = ?")
+	if err != nil {
+		return nil, err
+	}
+	row := stmt.QueryRowContext(ctx, name)
 
 	var entityName, entityType string
 	var embeddingBytes []byte
@@ -689,14 +733,17 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := db.QueryContext(ctx, `
-        SELECT DISTINCT e.name, e.entity_type, e.embedding
+	const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
         FROM entities e
         LEFT JOIN observations o ON e.name = o.entity_name
         WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
         ORDER BY e.name ASC
-        LIMIT ? OFFSET ?
-    `, searchQuery, searchQuery, searchQuery, limit, offset)
+        LIMIT ? OFFSET ?`
+	stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute entity search: %w", err)
 	}
@@ -750,8 +797,11 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, 
 		limit = 10
 	}
 
-	rows, err := db.QueryContext(ctx,
-		"SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC, name DESC LIMIT ?", limit)
+	stmt, err := dm.getPreparedStmt(ctx, projectName, db, "SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC, name DESC LIMIT ?")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.QueryContext(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query recent entities: %w", err)
 	}
