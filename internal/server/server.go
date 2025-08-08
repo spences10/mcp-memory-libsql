@@ -15,6 +15,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// TODO: Add Annotations to ALL tools
+// TODO: Add prompts
+
 const defaultProject = "default"
 
 // MCPServer handles MCP protocol communication
@@ -38,6 +41,7 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 	// initialize metrics from env (no-op if disabled)
 	metrics.InitFromEnv()
 	mcpServer.setupToolHandlers()
+	//mcpServer.setupPrompts()
 	return mcpServer
 }
 
@@ -47,10 +51,8 @@ func (s *MCPServer) setupToolHandlers() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for CreateEntitiesArgs: %v", err))
 	}
-	anyOutputSchema, err := jsonschema.For[any]()
-	if err != nil {
-		panic(fmt.Sprintf("failed to create schema for any: %v", err))
-	}
+	// Tools that return plain text do not need an output schema. Only
+	// tools returning structured content should declare OutputSchema.
 	searchNodesInputSchema, err := jsonschema.For[apptype.SearchNodesArgs]()
 	if err != nil {
 		panic(fmt.Sprintf("failed to create schema for SearchNodesArgs: %v", err))
@@ -151,12 +153,11 @@ func (s *MCPServer) setupToolHandlers() {
 	}
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Annotations:  &createEntitiesAnnotations,
-		Name:         "create_entities",
-		Title:        "Create Entities",
-		Description:  "Create new entities with observations and optional embeddings.",
-		InputSchema:  createEntitiesInputSchema,
-		OutputSchema: anyOutputSchema,
+		Annotations: &createEntitiesAnnotations,
+		Name:        "create_entities",
+		Title:       "Create Entities",
+		Description: "Create new entities with observations and optional embeddings.",
+		InputSchema: createEntitiesInputSchema,
 	}, s.handleCreateEntities)
 
 	mcp.AddTool(s.server, &mcp.Tool{
@@ -176,35 +177,31 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleReadGraph)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "create_relations",
-		Title:        "Create Relations",
-		Description:  "Create relations between entities.",
-		InputSchema:  createRelationsInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "create_relations",
+		Title:       "Create Relations",
+		Description: "Create relations between entities.",
+		InputSchema: createRelationsInputSchema,
 	}, s.handleCreateRelations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "delete_entity",
-		Title:        "Delete Entity",
-		Description:  "Delete an entity and all its associated data (observations and relations).",
-		InputSchema:  deleteEntityInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "delete_entity",
+		Title:       "Delete Entity",
+		Description: "Delete an entity and all its associated data (observations and relations).",
+		InputSchema: deleteEntityInputSchema,
 	}, s.handleDeleteEntity)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "delete_relation",
-		Title:        "Delete Relation",
-		Description:  "Delete a specific relation between entities.",
-		InputSchema:  deleteRelationInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "delete_relation",
+		Title:       "Delete Relation",
+		Description: "Delete a specific relation between entities.",
+		InputSchema: deleteRelationInputSchema,
 	}, s.handleDeleteRelation)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "add_observations",
-		Title:        "Add Observations",
-		Description:  "Append observations to an existing entity.",
-		InputSchema:  addObservationsInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "add_observations",
+		Title:       "Add Observations",
+		Description: "Append observations to an existing entity.",
+		InputSchema: addObservationsInputSchema,
 	}, s.handleAddObservations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
@@ -216,40 +213,35 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleOpenNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "delete_entities",
-		Title:        "Delete Entities",
-		Description:  "Delete multiple entities by name.",
-		InputSchema:  deleteEntitiesInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "delete_entities",
+		Title:       "Delete Entities",
+		Description: "Delete multiple entities by name.",
+		InputSchema: deleteEntitiesInputSchema,
 	}, s.handleDeleteEntities)
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "delete_relations",
-		Title:        "Delete Relations",
-		Description:  "Delete multiple relations.",
-		InputSchema:  deleteRelationsInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "delete_relations",
+		Title:       "Delete Relations",
+		Description: "Delete multiple relations.",
+		InputSchema: deleteRelationsInputSchema,
 	}, s.handleDeleteRelations)
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "delete_observations",
-		Title:        "Delete Observations",
-		Description:  "Delete observations by id or content for an entity (or all).",
-		InputSchema:  deleteObservationsInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "delete_observations",
+		Title:       "Delete Observations",
+		Description: "Delete observations by id or content for an entity (or all).",
+		InputSchema: deleteObservationsInputSchema,
 	}, s.handleDeleteObservations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "update_entities",
-		Title:        "Update Entities",
-		Description:  "Partially update entities (type/embedding/observations).",
-		InputSchema:  updateEntitiesInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "update_entities",
+		Title:       "Update Entities",
+		Description: "Partially update entities (type/embedding/observations).",
+		InputSchema: updateEntitiesInputSchema,
 	}, s.handleUpdateEntities)
 	mcp.AddTool(s.server, &mcp.Tool{
-		Name:         "update_relations",
-		Title:        "Update Relations",
-		Description:  "Update relation tuples via delete/insert.",
-		InputSchema:  updateRelationsInputSchema,
-		OutputSchema: anyOutputSchema,
+		Name:        "update_relations",
+		Title:       "Update Relations",
+		Description: "Update relation tuples via delete/insert.",
+		InputSchema: updateRelationsInputSchema,
 	}, s.handleUpdateRelations)
 	mcp.AddTool(s.server, &mcp.Tool{
 		Name:         "health_check",
@@ -283,6 +275,60 @@ func (s *MCPServer) setupToolHandlers() {
 		OutputSchema: shortestOutputSchema,
 	}, s.handleShortestPath)
 }
+
+/* // setupPrompts registers MCP prompts to guide clients in using this server
+func (s *MCPServer) setupPrompts() {
+	// A minimal quick start prompt
+	quickStart := &mcp.Prompt{
+		Name:        "quick_start",
+		Description: "Quick start guidance for using memory tools (search, read, and edit graph).",
+	}
+
+	s.server.AddPrompt(s.server, quickStart, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		msgs := []mcp.PromptMessage{
+			mcp.NewPromptMessage(
+				mcp.RoleAssistant,
+				&mcp.TextContent{Text: "You can use the following tools: search_nodes (text/vector/hybrid), read_graph (recent items), open_nodes, create_entities, create_relations, update_*, delete_* and graph traversal (neighbors, walk, shortest_path). Prefer search_nodes first, then refine with open_nodes and graph tools."},
+			),
+		}
+		return &mcp.GetPromptResult{
+			Description: "Memory quick start",
+			Messages:    msgs,
+		}, nil
+	})
+
+	// A parameterized prompt to search nodes
+	searchPrompt := &mcp.Prompt{
+		Name:        "search_nodes_prompt",
+		Description: "Compose an effective memory search using search_nodes",
+		Arguments: []mcp.PromptArgument{
+			{Name: "query", Description: "Text or vector-like query to search", Required: true},
+			{Name: "limit", Description: "Max results (default 5)", Required: false},
+			{Name: "offset", Description: "Offset for pagination", Required: false},
+		},
+	}
+
+	s.server.AddPrompt(searchPrompt, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		q := ""
+		if params != nil && params.Arguments != nil {
+			if v, ok := params.Arguments["query"].(string); ok {
+				q = v
+			}
+		}
+		if q == "" {
+			q = "memory"
+		}
+		text := fmt.Sprintf("Use the search_nodes tool with a concise query: %q. If results are too broad, refine and page with limit/offset. Then use open_nodes or neighbors/walk to explore.", q)
+		msgs := []mcp.PromptMessage{
+			//CreateMessage(mcp.RoleUser, &mcp.TextContent{Text: text}),
+			//s.server.Sessions()
+		}
+		return &mcp.GetPromptResult{
+			Description: "Search guidance",
+			Messages:    msgs,
+		}, nil
+	})
+} */
 
 func (s *MCPServer) getProjectName(providedName string) string {
 	if providedName != "" {
