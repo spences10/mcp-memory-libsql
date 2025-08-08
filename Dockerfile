@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # Build static binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/mcp-memory-libsql-go ./cmd/mcp-memory-libsql-go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/mcp-memory-libsql-go ./cmd/mcp-memory-libsql-go
 
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S app -G app

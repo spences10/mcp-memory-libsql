@@ -6,7 +6,7 @@ BIN := ./cmd/$(APP)
 .PHONY: build test docker
 
 build:
-	CGO_ENABLED=0 go build -o bin/$(APP) $(BIN)
+	CGO_ENABLED=1 go build -o bin/$(APP) $(BIN)
 
 test:
 	go test ./...
