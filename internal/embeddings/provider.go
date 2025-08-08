@@ -17,6 +17,26 @@ type Provider interface {
 	Embed(ctx context.Context, inputs []string) ([][]float32, error)
 }
 
+// NewStaticProvider returns a deterministic provider for tests
+type StaticProvider struct {
+	N int
+}
+
+func (s *StaticProvider) Name() string    { return "static" }
+func (s *StaticProvider) Dimensions() int { return s.N }
+func (s *StaticProvider) Embed(ctx context.Context, inputs []string) ([][]float32, error) {
+	out := make([][]float32, len(inputs))
+	for i := range inputs {
+		v := make([]float32, s.N)
+		// simple deterministic pattern: decreasing values
+		for j := 0; j < s.N; j++ {
+			v[j] = float32((s.N - j)) / float32(s.N)
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
 // NewFromEnv constructs a provider based on environment variables.
 // EMBEDDINGS_PROVIDER: "openai", "ollama", "gemini", "vertexai", "localai", or empty for disabled.
 func NewFromEnv() Provider {

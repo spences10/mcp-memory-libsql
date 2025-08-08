@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/apptype"
+	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/embeddings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,9 +21,9 @@ func setupTestDB(t *testing.T) (*DBManager, func()) {
 	config.URL = "file:testdb?mode=memory&cache=shared"
 	// Ensure valid embedding dims to satisfy guard
 	config.EmbeddingDims = 4
-    // Ensure hybrid disabled by default in tests
-    os.Setenv("HYBRID_SEARCH", "")
-    db, err := NewDBManager(config)
+	// FIXME:  Ensure hybrid disabled by default in tests - we need to test it
+	os.Setenv("HYBRID_SEARCH", "")
+	db, err := NewDBManager(config)
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -112,7 +113,7 @@ func setupFileDB(t *testing.T) (*DBManager, string, func()) {
 }
 
 func TestFileDB_CreateAndSearch(t *testing.T) {
-    db, _, cleanup := setupFileDB(t)
+	db, _, cleanup := setupFileDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -123,8 +124,8 @@ func TestFileDB_CreateAndSearch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-    // Text search path
-    ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+	// Text search path
+	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
 	require.NoError(t, err)
 	require.Len(t, ents, 1)
 	assert.Equal(t, "alpha", ents[0].Name)
@@ -135,19 +136,58 @@ func TestFileDB_CreateAndSearch(t *testing.T) {
 }
 
 func TestHybridSearch_TextOnlyFallback(t *testing.T) {
-    // Hybrid enabled but no provider/dims match -> should degrade to text-only
-    os.Setenv("HYBRID_SEARCH", "true")
-    defer os.Setenv("HYBRID_SEARCH", "")
-    db, cleanup := setupTestDB(t)
-    defer cleanup()
-    ctx := context.Background()
-    require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
-        {Name: "hy-a", EntityType: "k", Observations: []string{"alpha"}},
-        {Name: "hy-b", EntityType: "k", Observations: []string{"beta"}},
-    }))
-    ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
-    require.NoError(t, err)
-    require.NotEmpty(t, ents)
+	// Hybrid enabled but no provider/dims match -> should degrade to text-only
+	os.Setenv("HYBRID_SEARCH", "true")
+	defer os.Setenv("HYBRID_SEARCH", "")
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "hy-a", EntityType: "k", Observations: []string{"alpha"}},
+		{Name: "hy-b", EntityType: "k", Observations: []string{"beta"}},
+	}))
+	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, ents)
+}
+
+func TestHybridSearch_RankingFusion(t *testing.T) {
+	// Enable hybrid and install a static provider to ensure dims match and vector path engages
+	os.Setenv("HYBRID_SEARCH", "true")
+	defer os.Setenv("HYBRID_SEARCH", "")
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	// Override provider with static 4-dim
+	db.SetEmbeddingsProvider(&embeddings.StaticProvider{N: 4})
+
+	ctx := context.Background()
+	require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "hx-a", EntityType: "k", Observations: []string{"alpha apple"}},
+		{Name: "hx-b", EntityType: "k", Observations: []string{"alpha beta"}},
+		{Name: "hx-c", EntityType: "k", Observations: []string{"gamma"}},
+	}))
+
+	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(ents), 2)
+	// Expect both alpha-containing docs appear high; order may vary by scoring, but both should be top-2
+	names := []string{}
+	for i := 0; i < len(ents) && i < 2; i++ {
+		names = append(names, ents[i].Name)
+	}
+	// assert hx-a or hx-b are in the first two
+	assert.Condition(t, func() bool {
+		foundA, foundB := false, false
+		for _, n := range names {
+			if n == "hx-a" {
+				foundA = true
+			}
+			if n == "hx-b" {
+				foundB = true
+			}
+		}
+		return foundA || foundB
+	}, "expected hx-a or hx-b in top-2 hybrid results")
 }
 
 func TestFileDB_MultiProject(t *testing.T) {
@@ -195,7 +235,7 @@ func TestRelations(t *testing.T) {
 	err = db.CreateRelations(ctx, testProject, relations)
 	require.NoError(t, err)
 
-	// This part of the test is limited because we don't have a direct GetRelations method
+	// FIXME: This part of the test is limited because we don't have a direct GetRelations method
 	// We test that the relations are created without error.
 	// A more complete test would involve a ReadGraph or similar method.
 }

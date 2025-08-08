@@ -25,6 +25,8 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
+// TODO: add a GetRelations method to the DBManager, then update and fix tests that need it
+
 // SearchStrategy allows pluggable search implementations (text/vector/hybrid)
 type SearchStrategy interface {
 	Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error)
@@ -179,6 +181,11 @@ type DBManager struct {
 	provider embeddings.Provider
 	// search provides strategy-based search (text/vector). Default uses built-ins.
 	search SearchStrategy
+}
+
+// SetEmbeddingsProvider overrides the embeddings provider (primarily for tests)
+func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
+	dm.provider = p
 }
 
 // Config returns a copy of the database configuration
