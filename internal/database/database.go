@@ -26,14 +26,14 @@ import (
 
 // SearchStrategy allows pluggable search implementations (text/vector/hybrid)
 type SearchStrategy interface {
-    Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error)
+	Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error)
 }
 
 // defaultSearchStrategy uses built-in SearchSimilar and SearchEntities paths
 type defaultSearchStrategy struct{ dm *DBManager }
 
 func (s *defaultSearchStrategy) Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
-    return s.dm.searchNodesInternal(ctx, projectName, query, limit, offset)
+	return s.dm.searchNodesInternal(ctx, projectName, query, limit, offset)
 }
 
 const defaultProject = "default"
@@ -53,8 +53,8 @@ type DBManager struct {
 		fts5       bool
 	}
 	provider embeddings.Provider
-    // search provides strategy-based search (text/vector). Default uses built-ins.
-    search SearchStrategy
+	// search provides strategy-based search (text/vector). Default uses built-ins.
+	search SearchStrategy
 }
 
 // Config returns a copy of the database configuration
@@ -76,7 +76,7 @@ func NewDBManager(config *Config) (*DBManager, error) {
 		stmtCache: make(map[string]map[string]*sql.Stmt),
 	}
 	manager.provider = embeddings.NewFromEnv()
-    manager.search = &defaultSearchStrategy{dm: manager}
+	manager.search = &defaultSearchStrategy{dm: manager}
 
 	// If not in multi-project mode, initialize the default database immediately
 	if !config.MultiProjectMode {
@@ -1026,9 +1026,9 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 				dm.caps.fts5 = false
 				dm.mu.Unlock()
 				useFTS = false
-			} else if err != nil {
-				return nil, fmt.Errorf("failed to execute FTS search: %w", err)
-			}
+            } else {
+                return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+            }
 		}
 	}
 	if !useFTS {
@@ -1498,17 +1498,17 @@ func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit in
 
 // SearchNodes performs either vector or text search based on query type
 func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
-    // If a strategy is set, delegate. Otherwise fall back to built-in logic below.
-    if dm.search != nil {
-        entities, relations, err := dm.search.Search(ctx, projectName, query, limit, offset)
-        if err == nil {
-            return entities, relations, nil
-        }
-        // Fall through to internal path on strategy error
-        log.Printf("search strategy error, falling back: %v", err)
-    }
-    var entities []apptype.Entity
-    var err error
+	// If a strategy is set, delegate. Otherwise fall back to built-in logic below.
+	if dm.search != nil {
+		entities, relations, err := dm.search.Search(ctx, projectName, query, limit, offset)
+		if err == nil {
+			return entities, relations, nil
+		}
+		// Fall through to internal path on strategy error
+		log.Printf("search strategy error, falling back: %v", err)
+	}
+	var entities []apptype.Entity
+	var err error
 
 	switch q := query.(type) {
 	case []float32:
@@ -1622,111 +1622,111 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 
 // searchNodesInternal retains the pre-strategy behavior to ensure backward compatibility
 func (dm *DBManager) searchNodesInternal(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
-    var entities []apptype.Entity
-    var err error
-    switch q := query.(type) {
-    case []float32:
-        if len(q) == 0 {
-            return nil, nil, fmt.Errorf("vector query cannot be empty")
-        }
-        results, searchErr := dm.SearchSimilar(ctx, projectName, q, limit, offset)
-        if searchErr != nil {
-            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
-        }
-        entities = make([]apptype.Entity, len(results))
-        for i, result := range results {
-            entities[i] = result.Entity
-        }
-    case []float64:
-        if len(q) == 0 {
-            return nil, nil, fmt.Errorf("vector query cannot be empty")
-        }
-        vec := make([]float32, len(q))
-        for i, v := range q {
-            vec[i] = float32(v)
-        }
-        results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
-        if searchErr != nil {
-            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
-        }
-        entities = make([]apptype.Entity, len(results))
-        for i, result := range results {
-            entities[i] = result.Entity
-        }
-    case []interface{}:
-        if len(q) == 0 {
-            return nil, nil, fmt.Errorf("vector query cannot be empty")
-        }
-        vec := make([]float32, len(q))
-        for i, v := range q {
-            switch n := v.(type) {
-            case float64:
-                vec[i] = float32(n)
-            case float32:
-                vec[i] = n
-            case int:
-                vec[i] = float32(n)
-            case int64:
-                vec[i] = float32(n)
-            case json.Number:
-                f, convErr := n.Float64()
-                if convErr != nil {
-                    return nil, nil, fmt.Errorf("invalid vector element at index %d: %v", i, convErr)
-                }
-                vec[i] = float32(f)
-            case string:
-                f, convErr := strconv.ParseFloat(n, 64)
-                if convErr != nil {
-                    return nil, nil, fmt.Errorf("invalid numeric string at index %d: %v", i, convErr)
-                }
-                vec[i] = float32(f)
-            default:
-                return nil, nil, fmt.Errorf("unsupported vector element type at index %d: %T", i, v)
-            }
-        }
-        results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
-        if searchErr != nil {
-            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
-        }
-        entities = make([]apptype.Entity, len(results))
-        for i, result := range results {
-            entities[i] = result.Entity
-        }
-    case string:
-        if q == "" {
-            return nil, nil, fmt.Errorf("text query cannot be empty")
-        }
-        entities, err = dm.SearchEntities(ctx, projectName, q, limit, offset)
-        if err != nil {
-            return nil, nil, fmt.Errorf("failed to perform entity search: %w", err)
-        }
-    default:
-        if coerced, ok, cerr := coerceToFloat32Slice(query); ok {
-            if len(coerced) == 0 {
-                return nil, nil, fmt.Errorf("vector query cannot be empty")
-            }
-            results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, limit, offset)
-            if searchErr != nil {
-                return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
-            }
-            entities = make([]apptype.Entity, len(results))
-            for i, result := range results {
-                entities[i] = result.Entity
-            }
-        } else if cerr != nil {
-            return nil, nil, fmt.Errorf("invalid vector query: %v", cerr)
-        } else {
-            return nil, nil, fmt.Errorf("unsupported query type: %T", query)
-        }
-    }
-    if len(entities) == 0 {
-        return []apptype.Entity{}, []apptype.Relation{}, nil
-    }
-    relations, err := dm.GetRelationsForEntities(ctx, projectName, entities)
-    if err != nil {
-        return nil, nil, fmt.Errorf("failed to get relations: %w", err)
-    }
-    return entities, relations, nil
+	var entities []apptype.Entity
+	var err error
+	switch q := query.(type) {
+	case []float32:
+		if len(q) == 0 {
+			return nil, nil, fmt.Errorf("vector query cannot be empty")
+		}
+		results, searchErr := dm.SearchSimilar(ctx, projectName, q, limit, offset)
+		if searchErr != nil {
+			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+		}
+		entities = make([]apptype.Entity, len(results))
+		for i, result := range results {
+			entities[i] = result.Entity
+		}
+	case []float64:
+		if len(q) == 0 {
+			return nil, nil, fmt.Errorf("vector query cannot be empty")
+		}
+		vec := make([]float32, len(q))
+		for i, v := range q {
+			vec[i] = float32(v)
+		}
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
+		if searchErr != nil {
+			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+		}
+		entities = make([]apptype.Entity, len(results))
+		for i, result := range results {
+			entities[i] = result.Entity
+		}
+	case []interface{}:
+		if len(q) == 0 {
+			return nil, nil, fmt.Errorf("vector query cannot be empty")
+		}
+		vec := make([]float32, len(q))
+		for i, v := range q {
+			switch n := v.(type) {
+			case float64:
+				vec[i] = float32(n)
+			case float32:
+				vec[i] = n
+			case int:
+				vec[i] = float32(n)
+			case int64:
+				vec[i] = float32(n)
+			case json.Number:
+				f, convErr := n.Float64()
+				if convErr != nil {
+					return nil, nil, fmt.Errorf("invalid vector element at index %d: %v", i, convErr)
+				}
+				vec[i] = float32(f)
+			case string:
+				f, convErr := strconv.ParseFloat(n, 64)
+				if convErr != nil {
+					return nil, nil, fmt.Errorf("invalid numeric string at index %d: %v", i, convErr)
+				}
+				vec[i] = float32(f)
+			default:
+				return nil, nil, fmt.Errorf("unsupported vector element type at index %d: %T", i, v)
+			}
+		}
+		results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
+		if searchErr != nil {
+			return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+		}
+		entities = make([]apptype.Entity, len(results))
+		for i, result := range results {
+			entities[i] = result.Entity
+		}
+	case string:
+		if q == "" {
+			return nil, nil, fmt.Errorf("text query cannot be empty")
+		}
+		entities, err = dm.SearchEntities(ctx, projectName, q, limit, offset)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to perform entity search: %w", err)
+		}
+	default:
+		if coerced, ok, cerr := coerceToFloat32Slice(query); ok {
+			if len(coerced) == 0 {
+				return nil, nil, fmt.Errorf("vector query cannot be empty")
+			}
+			results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, limit, offset)
+			if searchErr != nil {
+				return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+			}
+			entities = make([]apptype.Entity, len(results))
+			for i, result := range results {
+				entities[i] = result.Entity
+			}
+		} else if cerr != nil {
+			return nil, nil, fmt.Errorf("invalid vector query: %v", cerr)
+		} else {
+			return nil, nil, fmt.Errorf("unsupported query type: %T", query)
+		}
+	}
+	if len(entities) == 0 {
+		return []apptype.Entity{}, []apptype.Relation{}, nil
+	}
+	relations, err := dm.GetRelationsForEntities(ctx, projectName, entities)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get relations: %w", err)
+	}
+	return entities, relations, nil
 }
 
 // coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32
