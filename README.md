@@ -162,6 +162,77 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 
 > Important: Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
 
+#### Common model → EMBEDDING_DIMS mapping
+
+| Provider | Model                     | Dimensions | Set `EMBEDDING_DIMS` |
+| -------: | ------------------------- | ---------- | -------------------- |
+|   OpenAI | `text-embedding-3-small`  | 1536       | 1536                 |
+|   OpenAI | `text-embedding-3-large`  | 3072       | 3072                 |
+|   Ollama | `nomic-embed-text`        | 768        | 768                  |
+|   Gemini | `text-embedding-004`      | 768        | 768                  |
+| VertexAI | `textembedding-gecko@003` | 768        | 768                  |
+|  LocalAI | `text-embedding-ada-002`  | 1536       | 1536                 |
+
+> Verify your exact model’s dimensionality with a quick API call (examples below) and set `EMBEDDING_DIMS` accordingly before creating a new DB.
+
+#### Provider quick verification (curl)
+
+These calls help you confirm the embedding vector length (dimension) for your chosen model.
+
+OpenAI
+
+```bash
+curl -s \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  https://api.openai.com/v1/embeddings \
+  -d '{"model":"text-embedding-3-small","input":["hello","world"]}' \
+| jq '.data[0].embedding | length'
+```
+
+Ollama (v0.2.6+ embeds endpoint)
+
+```bash
+curl -s "$OLLAMA_HOST/api/embed" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"nomic-embed-text","input":["hello","world"]}' \
+| jq '.embeddings[0] | length'
+```
+
+Gemini (Generative Language API)
+
+```bash
+curl -s \
+  -H "Content-Type: application/json" \
+  "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=$GOOGLE_API_KEY" \
+  -d '{"content":{"parts":[{"text":"hello"}]}}' \
+| jq '.embedding.values | length'
+```
+
+Vertex AI (using gcloud for access token)
+
+```bash
+export PROJECT_ID="your-project" LOCATION="us-central1"
+export MODEL="textembedding-gecko@003"
+export ENDPOINT="https://$LOCATION-aiplatform.googleapis.com/v1/projects/$PROJECT_ID/locations/$LOCATION/publishers/google/models/$MODEL:predict"
+export TOKEN="$(gcloud auth print-access-token)"
+
+curl -s "$ENDPOINT" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"instances":[{"content":"hello"}]}' \
+| jq '.predictions[0].embeddings.values | length'
+```
+
+LocalAI (OpenAI-compatible)
+
+```bash
+curl -s "$LOCALAI_BASE_URL/embeddings" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-ada-002","input":["hello","world"]}' \
+| jq '.data[0].embedding | length'
+```
+
 ### Running the Server
 
 #### Single Database Mode
@@ -507,6 +578,7 @@ The project follows a clean, modular architecture:
 - `internal/apptype/`: Core data structures and MCP type definitions
 - `internal/database/`: Database client and logic using libSQL
 - `internal/server/`: MCP server implementation
+- `internal/embeddings/`: Embeddings Providers implementations
 
 ## License
 
