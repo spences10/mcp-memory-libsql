@@ -36,3 +36,5 @@ Thumbs.db
 
 integration-report.json
 database.test
+
+.env*

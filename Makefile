@@ -115,6 +115,52 @@ compose-ps:
 .PHONY: docker-compose
 docker-compose: compose-up
 
+# Production run profile (Ollama, SSE, multi-project, hybrid, pooling, metrics)
+.PHONY: env-prod prod prod-down prod-logs prod-ps
+
+# Generate a production env file used by compose
+env-prod:
+	@echo "Writing .env.prod..."
+	@{ \
+	  echo "EMBEDDINGS_PROVIDER=ollama"; \
+	  echo "OLLAMA_HOST=http://ollama:11434"; \
+	  echo "OLLAMA_EMBEDDINGS_MODEL=nomic-embed-text"; \
+	  echo "EMBEDDING_DIMS=768"; \
+	  echo; \
+	  echo "HYBRID_SEARCH=true"; \
+	  echo "HYBRID_TEXT_WEIGHT=0.4"; \
+	  echo "HYBRID_VECTOR_WEIGHT=0.6"; \
+	  echo "HYBRID_RRF_K=60"; \
+	  echo; \
+	  echo "DB_MAX_OPEN_CONNS=16"; \
+	  echo "DB_MAX_IDLE_CONNS=8"; \
+	  echo "DB_CONN_MAX_IDLE_SEC=60"; \
+	  echo "DB_CONN_MAX_LIFETIME_SEC=300"; \
+	  echo; \
+	  echo "METRICS_PROMETHEUS=true"; \
+	  echo "METRICS_ADDR=:9090"; \
+	  echo; \
+	  echo "TRANSPORT=sse"; \
+	  echo "ADDR=:8080"; \
+	  echo "SSE_ENDPOINT=/sse"; \
+	  echo; \
+	  echo "# Optional remote DB settings (leave blank for local files)"; \
+	  echo "LIBSQL_URL="; \
+	  echo "LIBSQL_AUTH_TOKEN="; \
+	} > .env.prod
+
+prod: docker-build data env-prod
+	docker compose --env-file .env.prod --profile ollama --profile multi up --build -d
+
+prod-down: env-prod
+	docker compose --env-file .env.prod --profile ollama --profile multi down $(if $(WITH_VOLUMES),-v,)
+
+prod-logs: env-prod
+	docker compose --env-file .env.prod logs -f --tail=200 memory-multi
+
+prod-ps: env-prod
+	docker compose --env-file .env.prod ps
+
 # End-to-end docker test workflow
 .PHONY: docker-test
 docker-test: docker-build data
