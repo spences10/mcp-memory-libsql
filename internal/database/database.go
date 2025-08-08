@@ -38,6 +38,7 @@ type DBManager struct {
 	caps struct {
 		checked    bool
 		vectorTopK bool
+      fts5       bool
 	}
 	provider embeddings.Provider
 }
@@ -242,7 +243,7 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	}
 
 	zero := dm.vectorZeroString()
-	// Attempt to call vector_top_k with a short timeout; close rows if opened
+    // Attempt to call vector_top_k with a short timeout; close rows if opened
 	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	rows, err := db.QueryContext(ctx2, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
@@ -253,6 +254,53 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	dm.caps.vectorTopK = (err == nil)
 	dm.caps.checked = true
 	dm.mu.Unlock()
+
+    // Detect FTS5 support by attempting to create a temporary virtual table
+    ctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
+    defer cancel3()
+    if _, err := db.ExecContext(ctx3, "CREATE VIRTUAL TABLE IF NOT EXISTS temp._fts5_probe USING fts5(x)"); err == nil {
+        // Clean up probe table
+        _, _ = db.ExecContext(ctx3, "DROP TABLE IF EXISTS temp._fts5_probe")
+        dm.mu.Lock()
+        dm.caps.fts5 = true
+        dm.mu.Unlock()
+        // Ensure FTS schema/triggers exist for observations
+        _ = dm.ensureFTSSchema(context.Background(), db)
+    } else {
+        dm.mu.Lock()
+        dm.caps.fts5 = false
+        dm.mu.Unlock()
+    }
+}
+
+// ensureFTSSchema creates FTS5 virtual table and triggers if supported
+func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
+    // Create FTS table and triggers; IF NOT EXISTS makes this idempotent
+    stmts := []string{
+        `CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(entity_name, content)`,
+        `CREATE TRIGGER IF NOT EXISTS trg_obs_ai AFTER INSERT ON observations BEGIN
+            INSERT INTO fts_observations(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
+        END;`,
+        `CREATE TRIGGER IF NOT EXISTS trg_obs_ad AFTER DELETE ON observations BEGIN
+            INSERT INTO fts_observations(fts_observations, rowid, entity_name, content) VALUES ('delete', old.id, old.entity_name, old.content);
+        END;`,
+        `CREATE TRIGGER IF NOT EXISTS trg_obs_au AFTER UPDATE ON observations BEGIN
+            INSERT INTO fts_observations(fts_observations, rowid, entity_name, content) VALUES ('delete', old.id, old.entity_name, old.content);
+            INSERT INTO fts_observations(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
+        END;`,
+    }
+    for _, s := range stmts {
+        if _, err := db.ExecContext(ctx, s); err != nil {
+            // If module missing or any error occurs, do not hard-fail server init
+            return nil
+        }
+    }
+    // Backfill existing observations into FTS table (idempotent by rowid check)
+    _, _ = db.ExecContext(ctx, `INSERT INTO fts_observations(rowid, entity_name, content)
+        SELECT o.id, o.entity_name, o.content
+        FROM observations o
+        WHERE NOT EXISTS (SELECT 1 FROM fts_observations f WHERE f.rowid = o.id)`)
+    return nil
 }
 
 // vectorZeroString builds a zero vector string for current embedding dims
@@ -930,24 +978,60 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		return nil, fmt.Errorf("search query cannot be empty")
 	}
 
-	searchQuery := fmt.Sprintf("%%%s%%", query)
+    searchQuery := fmt.Sprintf("%%%s%%", query)
 	if limit <= 0 {
 		limit = 5
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
-        FROM entities e
-        LEFT JOIN observations o ON e.name = o.entity_name
-        WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
-        ORDER BY e.name ASC
-        LIMIT ? OFFSET ?`
-	stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
+    // Prefer FTS5 if available
+    dm.mu.RLock()
+    useFTS := dm.caps.fts5
+    dm.mu.RUnlock()
+    var rows *sql.Rows
+    if useFTS {
+        const qfts = `SELECT DISTINCT e.name, e.entity_type, e.embedding
+            FROM fts_observations f
+            JOIN observations o ON o.id = f.rowid
+            JOIN entities e ON e.name = o.entity_name
+            WHERE f.fts_observations MATCH ?
+            ORDER BY e.name ASC
+            LIMIT ? OFFSET ?`
+        stmt, err := dm.getPreparedStmt(ctx, projectName, db, qfts)
+        if err != nil {
+            return nil, err
+        }
+        rows, err = stmt.QueryContext(ctx, query, limit, offset)
+        if err != nil {
+            low := strings.ToLower(err.Error())
+            if strings.Contains(low, "no such module: fts5") || strings.Contains(low, "malformed MATCH") {
+                // downgrade to LIKE path
+                dm.mu.Lock()
+                dm.caps.fts5 = false
+                dm.mu.Unlock()
+                useFTS = false
+            } else if err != nil {
+                return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+            }
+        }
+    }
+    if !useFTS {
+        const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
+            FROM entities e
+            LEFT JOIN observations o ON e.name = o.entity_name
+            WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
+            ORDER BY e.name ASC
+            LIMIT ? OFFSET ?`
+        stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
+        if err != nil {
+            return nil, err
+        }
+        rows, err = stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
+        if err != nil {
+            return nil, fmt.Errorf("failed to execute entity search: %w", err)
+        }
+    }
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute entity search: %w", err)
 	}

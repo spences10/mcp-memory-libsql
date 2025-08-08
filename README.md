@@ -77,7 +77,7 @@ make docker
 
 docker run --rm -p 8080:8080 -p 9090:9090 \
   -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
-  -e EMBEDDING_DIMS=786 \
+  -e EMBEDDING_DIMS=768 \
   -v $(pwd)/data:/data \
   mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
 ```
