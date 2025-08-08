@@ -21,7 +21,7 @@ type Provider interface {
 // EMBEDDINGS_PROVIDER: "openai", "ollama", "gemini", "vertexai", "localai", or empty for disabled.
 func NewFromEnv() Provider {
 	name := strings.ToLower(strings.TrimSpace(os.Getenv("EMBEDDINGS_PROVIDER")))
-	switch name {
+    switch name {
 	case "openai":
 		if p := newOpenAIFromEnv(); p != nil {
 			return p
@@ -32,7 +32,7 @@ func NewFromEnv() Provider {
 			return p
 		}
 		return nil
-	case "gemini", "google-gemini", "google_genai":
+    case "gemini", "google-gemini", "google_genai", "google":
 		if p := newGeminiFromEnv(); p != nil {
 			return p
 		}

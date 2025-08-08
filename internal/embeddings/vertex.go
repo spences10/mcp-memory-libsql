@@ -14,7 +14,7 @@ import (
 // Vertex AI Text Embeddings API (REST) via AIP
 // Endpoint pattern:
 // https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict
-// Requires OAuth2. For simplicity, we allow a direct endpoint+token via env in this implementation.
+// FIXME: Requires OAuth2. For simplicity, we allow a direct endpoint+token via env in this implementation.
 
 type vertexProvider struct {
 	endpoint string // full URL to :predict

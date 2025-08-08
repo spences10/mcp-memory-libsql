@@ -147,9 +147,20 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 - `DB_CONN_MAX_LIFETIME_SEC`: Connection max lifetime in seconds (optional)
 - `METRICS_PROMETHEUS`: If set (e.g., `true`), expose Prometheus metrics
 - `METRICS_ADDR`: Metrics HTTP address (default `:9090`) exposing `/metrics` and `/healthz`
-- `EMBEDDINGS_PROVIDER`: Optional embeddings source (`openai`, `ollama`); server still accepts client-supplied embeddings if unset.
-- `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL`: OpenAI provider configuration (default model: `text-embedding-3-small`).
-- `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL`: Ollama provider configuration (default model: `nomic-embed-text`).
+- `EMBEDDINGS_PROVIDER`: Optional embeddings source. Supported values and aliases:
+  - `openai`
+  - `ollama`
+  - `gemini` | `google` | `google-gemini` | `google_genai`
+  - `vertexai` | `vertex` | `google-vertex`
+  - `localai` | `llamacpp` | `llama.cpp`
+  The server still accepts client-supplied embeddings if unset.
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`, dims 1536; `-large` dims 3072).
+- Ollama: `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL` (default `nomic-embed-text`, dims 768). Example `OLLAMA_HOST=http://localhost:11434`.
+- Google Gemini (Generative Language API): `GOOGLE_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` (default `text-embedding-004`, dims 768).
+- Google Vertex AI: `VERTEX_EMBEDDINGS_ENDPOINT`, `VERTEX_ACCESS_TOKEN` (Bearer token). Endpoint format: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict`.
+- LocalAI / llama.cpp (OpenAI-compatible): `LOCALAI_BASE_URL` (default `http://localhost:8080/v1`), `LOCALAI_EMBEDDINGS_MODEL` (default `text-embedding-ada-002`, dims 1536), optional `LOCALAI_API_KEY`.
+
+> Important: Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
 
 ### Running the Server
 
