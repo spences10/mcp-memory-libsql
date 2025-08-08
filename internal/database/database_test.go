@@ -94,6 +94,71 @@ func TestMultiProject(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// setupFileDB creates a real file-backed database to validate non-memory behavior
+func setupFileDB(t *testing.T) (*DBManager, string, func()) {
+	dir, err := os.MkdirTemp("", "mcp-mem-filedb")
+	require.NoError(t, err)
+	dbPath := dir + "/libsql.db"
+	cfg := &Config{URL: "file:" + dbPath, EmbeddingDims: 4}
+	db, err := NewDBManager(cfg)
+	require.NoError(t, err)
+	cleanup := func() {
+		_ = db.Close()
+		_ = os.RemoveAll(dir)
+	}
+	return db, dbPath, cleanup
+}
+
+func TestFileDB_CreateAndSearch(t *testing.T) {
+	db, _, cleanup := setupFileDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Create a couple of entities
+	err := db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "alpha", EntityType: "kind", Observations: []string{"first"}},
+		{Name: "beta", EntityType: "kind", Observations: []string{"second"}},
+	})
+	require.NoError(t, err)
+
+	// Text search path
+	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
+	require.NoError(t, err)
+	require.Len(t, ents, 1)
+	assert.Equal(t, "alpha", ents[0].Name)
+
+	// Vector search path (fallback to exact if ANN unsupported)
+	_, _, err = db.SearchNodes(ctx, testProject, []float32{0.1, 0.2, 0.3, 0.4}, 5, 0)
+	require.NoError(t, err)
+}
+
+func TestFileDB_MultiProject(t *testing.T) {
+	dir, err := os.MkdirTemp("", "mcp-mem-filedb-mp")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	cfg := &Config{ProjectsDir: dir, MultiProjectMode: true, EmbeddingDims: 4}
+	db, err := NewDBManager(cfg)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	// Write to P1 and P2
+	require.NoError(t, db.CreateEntities(ctx, "P1", []apptype.Entity{{Name: "n1", EntityType: "t", Observations: []string{"o1"}}}))
+	require.NoError(t, db.CreateEntities(ctx, "P2", []apptype.Entity{{Name: "n2", EntityType: "t", Observations: []string{"o2"}}}))
+
+	// Read back
+	e1, err := db.GetEntity(ctx, "P1", "n1")
+	require.NoError(t, err)
+	assert.Equal(t, "n1", e1.Name)
+	_, err = db.GetEntity(ctx, "P1", "n2")
+	assert.Error(t, err)
+
+	e2, err := db.GetEntity(ctx, "P2", "n2")
+	require.NoError(t, err)
+	assert.Equal(t, "n2", e2.Name)
+}
+
 func TestRelations(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
