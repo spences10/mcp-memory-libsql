@@ -33,6 +33,13 @@ fi
 echo "Creating installation directory if it doesn't exist: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
+# Check if the binary already exists in the installation directory
+if [ -f "$INSTALL_DIR/mcp-memory-libsql-go" ]; then
+    echo "Binary already exists in $INSTALL_DIR. Please remove it before installing."
+    # Remove the binary
+    rm "$INSTALL_DIR/mcp-memory-libsql-go"
+fi
+
 echo "Installing binary to $INSTALL_DIR"
 mv $1 "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/mcp-memory-libsql-go"
