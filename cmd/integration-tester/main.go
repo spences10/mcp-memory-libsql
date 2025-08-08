@@ -50,10 +50,10 @@ func main() {
 	if err != nil {
 		connRes.Success = false
 		connRes.Error = err.Error()
-		connRes.ElapsedMs = int64(time.Since(tConn) / time.Millisecond)
+		connRes.ElapsedMs = elapsedMsSince(tConn)
 		steps = append(steps, connRes)
 		report.Steps = steps
-		report.DurationMs = int64(time.Since(start) / time.Millisecond)
+		report.DurationMs = elapsedMsSince(start)
 		report.Passed = false
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -62,7 +62,7 @@ func main() {
 	}
 	defer session.Close()
 	connRes.Success = true
-	connRes.ElapsedMs = int64(time.Since(tConn) / time.Millisecond)
+	connRes.ElapsedMs = elapsedMsSince(tConn)
 	steps = append(steps, connRes)
 
 	// Individual steps
@@ -77,7 +77,7 @@ func main() {
 
 	// finalize report
 	report.Steps = steps
-	report.DurationMs = int64(time.Since(start) / time.Millisecond)
+	report.DurationMs = elapsedMsSince(start)
 	report.Passed = true
 	for _, s := range steps {
 		if !s.Success {
@@ -104,7 +104,7 @@ func runListTools(ctx context.Context, session *mcp.ClientSession) StepResult {
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -126,7 +126,7 @@ func runCreateEntities(ctx context.Context, session *mcp.ClientSession, project 
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -142,7 +142,7 @@ func runSearchNodes(ctx context.Context, session *mcp.ClientSession, project, q 
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -158,7 +158,7 @@ func runReadGraph(ctx context.Context, session *mcp.ClientSession, project strin
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -179,7 +179,7 @@ func runSeedGraph(ctx context.Context, session *mcp.ClientSession, project strin
 	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Arguments: json.RawMessage(raw)}); err != nil {
 		res.Success = false
 		res.Error = fmt.Sprintf("create_entities seed: %v", err)
-		res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+		res.ElapsedMs = elapsedMsSince(t0)
 		return res
 	}
 	// relations: a->b, b->c, a->d
@@ -191,11 +191,11 @@ func runSeedGraph(ctx context.Context, session *mcp.ClientSession, project strin
 	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "create_relations", Arguments: json.RawMessage(rraw)}); err != nil {
 		res.Success = false
 		res.Error = fmt.Sprintf("create_relations seed: %v", err)
-		res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+		res.ElapsedMs = elapsedMsSince(t0)
 		return res
 	}
 	res.Success = true
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -215,7 +215,7 @@ func runNeighbors(ctx context.Context, session *mcp.ClientSession, project strin
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -236,7 +236,7 @@ func runWalk(ctx context.Context, session *mcp.ClientSession, project string) St
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
 }
 
@@ -257,6 +257,15 @@ func runShortestPath(ctx context.Context, session *mcp.ClientSession, project st
 	} else {
 		res.Success = true
 	}
-	res.ElapsedMs = int64(time.Since(t0) / time.Millisecond)
+	res.ElapsedMs = elapsedMsSince(t0)
 	return res
+}
+
+// elapsedMsSince returns max(1ms, elapsed) to avoid zero durations on fast steps
+func elapsedMsSince(t0 time.Time) int64 {
+	d := time.Since(t0) / time.Millisecond
+	if d <= 0 {
+		return 1
+	}
+	return int64(d)
 }
