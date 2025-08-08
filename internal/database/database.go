@@ -143,10 +143,7 @@ func (s *hybridSearchStrategy) Search(ctx context.Context, projectName string, q
 	sort.SliceStable(scoredList, func(i, j int) bool { return scoredList[i].score > scoredList[j].score })
 
 	// Apply pagination
-	start := offset
-	if start > len(scoredList) {
-		start = len(scoredList)
-	}
+	start := min(offset, len(scoredList))
 	end := min(start+limit, len(scoredList))
 	entities := make([]apptype.Entity, end-start)
 	for i := start; i < end; i++ {
