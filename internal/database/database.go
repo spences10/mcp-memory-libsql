@@ -24,6 +24,18 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
+// SearchStrategy allows pluggable search implementations (text/vector/hybrid)
+type SearchStrategy interface {
+    Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error)
+}
+
+// defaultSearchStrategy uses built-in SearchSimilar and SearchEntities paths
+type defaultSearchStrategy struct{ dm *DBManager }
+
+func (s *defaultSearchStrategy) Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
+    return s.dm.searchNodesInternal(ctx, projectName, query, limit, offset)
+}
+
 const defaultProject = "default"
 
 // DBManager handles all database operations
@@ -38,9 +50,11 @@ type DBManager struct {
 	caps struct {
 		checked    bool
 		vectorTopK bool
-      fts5       bool
+		fts5       bool
 	}
 	provider embeddings.Provider
+    // search provides strategy-based search (text/vector). Default uses built-ins.
+    search SearchStrategy
 }
 
 // Config returns a copy of the database configuration
@@ -62,6 +76,7 @@ func NewDBManager(config *Config) (*DBManager, error) {
 		stmtCache: make(map[string]map[string]*sql.Stmt),
 	}
 	manager.provider = embeddings.NewFromEnv()
+    manager.search = &defaultSearchStrategy{dm: manager}
 
 	// If not in multi-project mode, initialize the default database immediately
 	if !config.MultiProjectMode {
@@ -243,7 +258,7 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	}
 
 	zero := dm.vectorZeroString()
-    // Attempt to call vector_top_k with a short timeout; close rows if opened
+	// Attempt to call vector_top_k with a short timeout; close rows if opened
 	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	rows, err := db.QueryContext(ctx2, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
@@ -255,52 +270,52 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	dm.caps.checked = true
 	dm.mu.Unlock()
 
-    // Detect FTS5 support by attempting to create a temporary virtual table
-    ctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
-    defer cancel3()
-    if _, err := db.ExecContext(ctx3, "CREATE VIRTUAL TABLE IF NOT EXISTS temp._fts5_probe USING fts5(x)"); err == nil {
-        // Clean up probe table
-        _, _ = db.ExecContext(ctx3, "DROP TABLE IF EXISTS temp._fts5_probe")
-        dm.mu.Lock()
-        dm.caps.fts5 = true
-        dm.mu.Unlock()
-        // Ensure FTS schema/triggers exist for observations
-        _ = dm.ensureFTSSchema(context.Background(), db)
-    } else {
-        dm.mu.Lock()
-        dm.caps.fts5 = false
-        dm.mu.Unlock()
-    }
+	// Detect FTS5 support by attempting to create a temporary virtual table
+	ctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel3()
+	if _, err := db.ExecContext(ctx3, "CREATE VIRTUAL TABLE IF NOT EXISTS temp._fts5_probe USING fts5(x)"); err == nil {
+		// Clean up probe table
+		_, _ = db.ExecContext(ctx3, "DROP TABLE IF EXISTS temp._fts5_probe")
+		dm.mu.Lock()
+		dm.caps.fts5 = true
+		dm.mu.Unlock()
+		// Ensure FTS schema/triggers exist for observations
+		_ = dm.ensureFTSSchema(context.Background(), db)
+	} else {
+		dm.mu.Lock()
+		dm.caps.fts5 = false
+		dm.mu.Unlock()
+	}
 }
 
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported
 func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
-    // Create FTS table and triggers; IF NOT EXISTS makes this idempotent
-    stmts := []string{
-        `CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(entity_name, content)`,
-        `CREATE TRIGGER IF NOT EXISTS trg_obs_ai AFTER INSERT ON observations BEGIN
+	// Create FTS table and triggers; IF NOT EXISTS makes this idempotent
+	stmts := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(entity_name, content)`,
+		`CREATE TRIGGER IF NOT EXISTS trg_obs_ai AFTER INSERT ON observations BEGIN
             INSERT INTO fts_observations(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
         END;`,
-        `CREATE TRIGGER IF NOT EXISTS trg_obs_ad AFTER DELETE ON observations BEGIN
+		`CREATE TRIGGER IF NOT EXISTS trg_obs_ad AFTER DELETE ON observations BEGIN
             INSERT INTO fts_observations(fts_observations, rowid, entity_name, content) VALUES ('delete', old.id, old.entity_name, old.content);
         END;`,
-        `CREATE TRIGGER IF NOT EXISTS trg_obs_au AFTER UPDATE ON observations BEGIN
+		`CREATE TRIGGER IF NOT EXISTS trg_obs_au AFTER UPDATE ON observations BEGIN
             INSERT INTO fts_observations(fts_observations, rowid, entity_name, content) VALUES ('delete', old.id, old.entity_name, old.content);
             INSERT INTO fts_observations(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
         END;`,
-    }
-    for _, s := range stmts {
-        if _, err := db.ExecContext(ctx, s); err != nil {
-            // If module missing or any error occurs, do not hard-fail server init
-            return nil
-        }
-    }
-    // Backfill existing observations into FTS table (idempotent by rowid check)
-    _, _ = db.ExecContext(ctx, `INSERT INTO fts_observations(rowid, entity_name, content)
+	}
+	for _, s := range stmts {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			// If module missing or any error occurs, do not hard-fail server init
+			return nil
+		}
+	}
+	// Backfill existing observations into FTS table (idempotent by rowid check)
+	_, _ = db.ExecContext(ctx, `INSERT INTO fts_observations(rowid, entity_name, content)
         SELECT o.id, o.entity_name, o.content
         FROM observations o
         WHERE NOT EXISTS (SELECT 1 FROM fts_observations f WHERE f.rowid = o.id)`)
-    return nil
+	return nil
 }
 
 // vectorZeroString builds a zero vector string for current embedding dims
@@ -978,60 +993,60 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		return nil, fmt.Errorf("search query cannot be empty")
 	}
 
-    searchQuery := fmt.Sprintf("%%%s%%", query)
+	searchQuery := fmt.Sprintf("%%%s%%", query)
 	if limit <= 0 {
 		limit = 5
 	}
 	if offset < 0 {
 		offset = 0
 	}
-    // Prefer FTS5 if available
-    dm.mu.RLock()
-    useFTS := dm.caps.fts5
-    dm.mu.RUnlock()
-    var rows *sql.Rows
-    if useFTS {
-        const qfts = `SELECT DISTINCT e.name, e.entity_type, e.embedding
+	// Prefer FTS5 if available
+	dm.mu.RLock()
+	useFTS := dm.caps.fts5
+	dm.mu.RUnlock()
+	var rows *sql.Rows
+	if useFTS {
+		const qfts = `SELECT DISTINCT e.name, e.entity_type, e.embedding
             FROM fts_observations f
             JOIN observations o ON o.id = f.rowid
             JOIN entities e ON e.name = o.entity_name
             WHERE f.fts_observations MATCH ?
             ORDER BY e.name ASC
             LIMIT ? OFFSET ?`
-        stmt, err := dm.getPreparedStmt(ctx, projectName, db, qfts)
-        if err != nil {
-            return nil, err
-        }
-        rows, err = stmt.QueryContext(ctx, query, limit, offset)
-        if err != nil {
-            low := strings.ToLower(err.Error())
-            if strings.Contains(low, "no such module: fts5") || strings.Contains(low, "malformed MATCH") {
-                // downgrade to LIKE path
-                dm.mu.Lock()
-                dm.caps.fts5 = false
-                dm.mu.Unlock()
-                useFTS = false
-            } else if err != nil {
-                return nil, fmt.Errorf("failed to execute FTS search: %w", err)
-            }
-        }
-    }
-    if !useFTS {
-        const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
+		stmt, err := dm.getPreparedStmt(ctx, projectName, db, qfts)
+		if err != nil {
+			return nil, err
+		}
+		rows, err = stmt.QueryContext(ctx, query, limit, offset)
+		if err != nil {
+			low := strings.ToLower(err.Error())
+			if strings.Contains(low, "no such module: fts5") || strings.Contains(low, "malformed MATCH") {
+				// downgrade to LIKE path
+				dm.mu.Lock()
+				dm.caps.fts5 = false
+				dm.mu.Unlock()
+				useFTS = false
+			} else if err != nil {
+				return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+			}
+		}
+	}
+	if !useFTS {
+		const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
             FROM entities e
             LEFT JOIN observations o ON e.name = o.entity_name
             WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
             ORDER BY e.name ASC
             LIMIT ? OFFSET ?`
-        stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
-        if err != nil {
-            return nil, err
-        }
-        rows, err = stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
-        if err != nil {
-            return nil, fmt.Errorf("failed to execute entity search: %w", err)
-        }
-    }
+		stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
+		if err != nil {
+			return nil, err
+		}
+		rows, err = stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute entity search: %w", err)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute entity search: %w", err)
 	}
@@ -1483,8 +1498,17 @@ func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit in
 
 // SearchNodes performs either vector or text search based on query type
 func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
-	var entities []apptype.Entity
-	var err error
+    // If a strategy is set, delegate. Otherwise fall back to built-in logic below.
+    if dm.search != nil {
+        entities, relations, err := dm.search.Search(ctx, projectName, query, limit, offset)
+        if err == nil {
+            return entities, relations, nil
+        }
+        // Fall through to internal path on strategy error
+        log.Printf("search strategy error, falling back: %v", err)
+    }
+    var entities []apptype.Entity
+    var err error
 
 	switch q := query.(type) {
 	case []float32:
@@ -1594,6 +1618,115 @@ func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query 
 	}
 
 	return entities, relations, nil
+}
+
+// searchNodesInternal retains the pre-strategy behavior to ensure backward compatibility
+func (dm *DBManager) searchNodesInternal(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
+    var entities []apptype.Entity
+    var err error
+    switch q := query.(type) {
+    case []float32:
+        if len(q) == 0 {
+            return nil, nil, fmt.Errorf("vector query cannot be empty")
+        }
+        results, searchErr := dm.SearchSimilar(ctx, projectName, q, limit, offset)
+        if searchErr != nil {
+            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+        }
+        entities = make([]apptype.Entity, len(results))
+        for i, result := range results {
+            entities[i] = result.Entity
+        }
+    case []float64:
+        if len(q) == 0 {
+            return nil, nil, fmt.Errorf("vector query cannot be empty")
+        }
+        vec := make([]float32, len(q))
+        for i, v := range q {
+            vec[i] = float32(v)
+        }
+        results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
+        if searchErr != nil {
+            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+        }
+        entities = make([]apptype.Entity, len(results))
+        for i, result := range results {
+            entities[i] = result.Entity
+        }
+    case []interface{}:
+        if len(q) == 0 {
+            return nil, nil, fmt.Errorf("vector query cannot be empty")
+        }
+        vec := make([]float32, len(q))
+        for i, v := range q {
+            switch n := v.(type) {
+            case float64:
+                vec[i] = float32(n)
+            case float32:
+                vec[i] = n
+            case int:
+                vec[i] = float32(n)
+            case int64:
+                vec[i] = float32(n)
+            case json.Number:
+                f, convErr := n.Float64()
+                if convErr != nil {
+                    return nil, nil, fmt.Errorf("invalid vector element at index %d: %v", i, convErr)
+                }
+                vec[i] = float32(f)
+            case string:
+                f, convErr := strconv.ParseFloat(n, 64)
+                if convErr != nil {
+                    return nil, nil, fmt.Errorf("invalid numeric string at index %d: %v", i, convErr)
+                }
+                vec[i] = float32(f)
+            default:
+                return nil, nil, fmt.Errorf("unsupported vector element type at index %d: %T", i, v)
+            }
+        }
+        results, searchErr := dm.SearchSimilar(ctx, projectName, vec, limit, offset)
+        if searchErr != nil {
+            return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+        }
+        entities = make([]apptype.Entity, len(results))
+        for i, result := range results {
+            entities[i] = result.Entity
+        }
+    case string:
+        if q == "" {
+            return nil, nil, fmt.Errorf("text query cannot be empty")
+        }
+        entities, err = dm.SearchEntities(ctx, projectName, q, limit, offset)
+        if err != nil {
+            return nil, nil, fmt.Errorf("failed to perform entity search: %w", err)
+        }
+    default:
+        if coerced, ok, cerr := coerceToFloat32Slice(query); ok {
+            if len(coerced) == 0 {
+                return nil, nil, fmt.Errorf("vector query cannot be empty")
+            }
+            results, searchErr := dm.SearchSimilar(ctx, projectName, coerced, limit, offset)
+            if searchErr != nil {
+                return nil, nil, fmt.Errorf("failed to perform similarity search: %w", searchErr)
+            }
+            entities = make([]apptype.Entity, len(results))
+            for i, result := range results {
+                entities[i] = result.Entity
+            }
+        } else if cerr != nil {
+            return nil, nil, fmt.Errorf("invalid vector query: %v", cerr)
+        } else {
+            return nil, nil, fmt.Errorf("unsupported query type: %T", query)
+        }
+    }
+    if len(entities) == 0 {
+        return []apptype.Entity{}, []apptype.Relation{}, nil
+    }
+    relations, err := dm.GetRelationsForEntities(ctx, projectName, entities)
+    if err != nil {
+        return nil, nil, fmt.Errorf("failed to get relations: %w", err)
+    }
+    return entities, relations, nil
 }
 
 // coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32
