@@ -155,6 +155,11 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
   - `vertexai` | `vertex` | `google-vertex`
   - `localai` | `llamacpp` | `llama.cpp`
     The server still accepts client-supplied embeddings if unset.
+- Hybrid Search (optional):
+  - `HYBRID_SEARCH` (true/1 to enable)
+  - `HYBRID_TEXT_WEIGHT` (default 0.4)
+  - `HYBRID_VECTOR_WEIGHT` (default 0.6)
+  - `HYBRID_RRF_K` (default 60)
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`, dims 1536; `-large` dims 3072).
 - Ollama: `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL` (default `nomic-embed-text`, dims 768). Example `OLLAMA_HOST=http://localhost:11434`.
 - Google Gemini (Generative Language API): `GOOGLE_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` (default `text-embedding-004`, dims 768).
@@ -163,6 +168,25 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 
 > [!IMPORTANT]\
 >  Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
+
+### Hybrid Search
+
+Hybrid Search fuses text results (FTS5 when available, otherwise `LIKE`) with vector similarity using an RRF-style scoring function:
+
+- Score = `HYBRID_TEXT_WEIGHT * (1/(k + text_rank)) + HYBRID_VECTOR_WEIGHT * (1/(k + vector_rank))`
+- Defaults: text=0.4, vector=0.6, k=60
+- Requires an embeddings provider to generate a vector for the text query. If unavailable or dims mismatch, hybrid degrades to text-only.
+- If FTS5 is not available, the server falls back to `LIKE` transparently.
+
+Enable and tune:
+
+```bash
+HYBRID_SEARCH=true \
+HYBRID_TEXT_WEIGHT=0.4 HYBRID_VECTOR_WEIGHT=0.6 HYBRID_RRF_K=60 \
+EMBEDDINGS_PROVIDER=openai OPENAI_API_KEY=... OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small \
+EMBEDDING_DIMS=1536 \
+./mcp-memory-libsql-go
+```
 
 #### Common model → EMBEDDING_DIMS mapping
 
