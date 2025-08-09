@@ -47,5 +47,11 @@ func dynamicSchema(embeddingDims int) []string {
 
 		// Create vector index for similarity search
 		`CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding))`,
+
+		// Soft cascade via triggers to keep referential integrity without table rebuilds
+		`CREATE TRIGGER IF NOT EXISTS trg_entities_delete_cascade AFTER DELETE ON entities BEGIN
+		    DELETE FROM observations WHERE entity_name = old.name;
+		    DELETE FROM relations WHERE source = old.name OR target = old.name;
+		END;`,
 	}
 }
