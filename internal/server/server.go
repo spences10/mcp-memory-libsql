@@ -26,6 +26,16 @@ type MCPServer struct {
 	db     *database.DBManager
 }
 
+// logToolError emits a consistent, low-cardinality structured log line for tool failures.
+// Use key=value formatting to keep logs machine-parseable without introducing a logging dep.
+func logToolError(tool string, project string, err error) {
+    if err == nil {
+        return
+    }
+    // Note: avoid including dynamic high-cardinality values beyond tool/project.
+    log.Printf("level=error tool=%s project=%s msg=tool_failed error=%q", tool, project, err.Error())
+}
+
 // NewMCPServer creates a new MCP server
 func NewMCPServer(db *database.DBManager) *MCPServer {
 	server := mcp.NewServer(&mcp.Implementation{
@@ -351,11 +361,12 @@ func (s *MCPServer) handleCreateEntities(
 
     if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to create entities: %w", err)
+        logToolError("create_entities", projectName, err)
+        return nil, fmt.Errorf("failed to create entities: %w", err)
 	}
 	success = true
-    // Observability: record number of entities processed
-    metrics.ObserveToolResultSize("create_entities", len(entities))
+	// Observability: record number of entities processed
+	metrics.ObserveToolResultSize("create_entities", len(entities))
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -387,15 +398,16 @@ func (s *MCPServer) handleSearchNodes(
 		offset = 0
 	}
 
-    entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
-	if err != nil {
+	entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
+    if err != nil {
 		success = false
-		return nil, fmt.Errorf("search failed: %w", err)
+        logToolError("search_nodes", projectName, err)
+        return nil, fmt.Errorf("search failed: %w", err)
 	}
 	success = true
-    // Observability: sizes of returned sets
-    metrics.ObserveToolResultSize("search_nodes_entities", len(entities))
-    metrics.ObserveToolResultSize("search_nodes_relations", len(relations))
+	// Observability: sizes of returned sets
+	metrics.ObserveToolResultSize("search_nodes_entities", len(entities))
+	metrics.ObserveToolResultSize("search_nodes_relations", len(relations))
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -425,14 +437,15 @@ func (s *MCPServer) handleReadGraph(
 	if limit <= 0 {
 		limit = 10
 	}
-    entities, relations, err := s.db.ReadGraph(ctx, projectName, limit)
-	if err != nil {
+	entities, relations, err := s.db.ReadGraph(ctx, projectName, limit)
+    if err != nil {
 		success = false
-		return nil, fmt.Errorf("read graph failed: %w", err)
+        logToolError("read_graph", projectName, err)
+        return nil, fmt.Errorf("read graph failed: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("read_graph_entities", len(entities))
-    metrics.ObserveToolResultSize("read_graph_relations", len(relations))
+	metrics.ObserveToolResultSize("read_graph_entities", len(entities))
+	metrics.ObserveToolResultSize("read_graph_relations", len(relations))
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -471,10 +484,11 @@ func (s *MCPServer) handleCreateRelations(
 
     if err := s.db.CreateRelations(ctx, projectName, internalRelations); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to create relations: %w", err)
+        logToolError("create_relations", projectName, err)
+        return nil, fmt.Errorf("failed to create relations: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("create_relations", len(internalRelations))
+	metrics.ObserveToolResultSize("create_relations", len(internalRelations))
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -500,7 +514,8 @@ func (s *MCPServer) handleDeleteEntity(
 
     if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to delete entity: %w", err)
+        logToolError("delete_entity", projectName, err)
+        return nil, fmt.Errorf("failed to delete entity: %w", err)
 	}
 	success = true
 
@@ -530,7 +545,8 @@ func (s *MCPServer) handleDeleteRelation(
 
     if err := s.db.DeleteRelation(ctx, projectName, source, target, relationType); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to delete relation: %w", err)
+        logToolError("delete_relation", projectName, err)
+        return nil, fmt.Errorf("failed to delete relation: %w", err)
 	}
 	success = true
 
@@ -568,10 +584,11 @@ func (s *MCPServer) handleAddObservations(
 
     if err := s.db.AddObservations(ctx, projectName, entityName, observations); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to add observations: %w", err)
+        logToolError("add_observations", projectName, err)
+        return nil, fmt.Errorf("failed to add observations: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("add_observations", len(observations))
+	metrics.ObserveToolResultSize("add_observations", len(observations))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Added %d observations to %q in project %s", len(observations), entityName, projectName)}},
 	}, nil
@@ -591,23 +608,25 @@ func (s *MCPServer) handleOpenNodes(
 	include := params.Arguments.IncludeRelations
 
 	entities, err := s.db.GetEntities(ctx, projectName, names)
-	if err != nil {
+    if err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to get entities: %w", err)
+        logToolError("open_nodes", projectName, err)
+        return nil, fmt.Errorf("failed to get entities: %w", err)
 	}
 	var relations []apptype.Relation
 	if include {
-		relations, err = s.db.GetRelationsForEntities(ctx, projectName, entities)
-		if err != nil {
-			success = false
-			return nil, fmt.Errorf("failed to get relations: %w", err)
-		}
+        relations, err = s.db.GetRelationsForEntities(ctx, projectName, entities)
+        if err != nil {
+            success = false
+            logToolError("open_nodes", projectName, err)
+            return nil, fmt.Errorf("failed to get relations: %w", err)
+        }
 	}
-    success = true
-    metrics.ObserveToolResultSize("open_nodes_entities", len(entities))
-    if include {
-        metrics.ObserveToolResultSize("open_nodes_relations", len(relations))
-    }
+	success = true
+	metrics.ObserveToolResultSize("open_nodes_entities", len(entities))
+	if include {
+		metrics.ObserveToolResultSize("open_nodes_relations", len(relations))
+	}
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Open nodes completed"}},
 		StructuredContent: apptype.GraphResult{Entities: entities, Relations: relations},
@@ -627,10 +646,11 @@ func (s *MCPServer) handleDeleteEntities(
 	names := params.Arguments.Names
     if err := s.db.DeleteEntities(ctx, projectName, names); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to delete entities: %w", err)
+        logToolError("delete_entities", projectName, err)
+        return nil, fmt.Errorf("failed to delete entities: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("delete_entities", len(names))
+	metrics.ObserveToolResultSize("delete_entities", len(names))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d entities in project %s", len(names), projectName)}},
 	}, nil
@@ -652,10 +672,11 @@ func (s *MCPServer) handleDeleteRelations(
 	}
     if err := s.db.DeleteRelations(ctx, projectName, tuples); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to delete relations: %w", err)
+        logToolError("delete_relations", projectName, err)
+        return nil, fmt.Errorf("failed to delete relations: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("delete_relations", len(tuples))
+	metrics.ObserveToolResultSize("delete_relations", len(tuples))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d relations in project %s", len(tuples), projectName)}},
 	}, nil
@@ -674,13 +695,14 @@ func (s *MCPServer) handleDeleteObservations(
 	entity := params.Arguments.EntityName
 	ids := params.Arguments.IDs
 	contents := params.Arguments.Contents
-    ra, err := s.db.DeleteObservations(ctx, projectName, entity, ids, contents)
-	if err != nil {
+	ra, err := s.db.DeleteObservations(ctx, projectName, entity, ids, contents)
+    if err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to delete observations: %w", err)
+        logToolError("delete_observations", projectName, err)
+        return nil, fmt.Errorf("failed to delete observations: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("delete_observations", int(ra))
+	metrics.ObserveToolResultSize("delete_observations", int(ra))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d observations from %q in project %s", ra, entity, projectName)}},
 	}, nil
@@ -698,10 +720,11 @@ func (s *MCPServer) handleUpdateEntities(
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
     if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to update entities: %w", err)
+        logToolError("update_entities", projectName, err)
+        return nil, fmt.Errorf("failed to update entities: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("update_entities", len(params.Arguments.Updates))
+	metrics.ObserveToolResultSize("update_entities", len(params.Arguments.Updates))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d entities in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -719,10 +742,11 @@ func (s *MCPServer) handleUpdateRelations(
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
     if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
-		return nil, fmt.Errorf("failed to update relations: %w", err)
+        logToolError("update_relations", projectName, err)
+        return nil, fmt.Errorf("failed to update relations: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("update_relations", len(params.Arguments.Updates))
+	metrics.ObserveToolResultSize("update_relations", len(params.Arguments.Updates))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d relations in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -767,13 +791,13 @@ func (s *MCPServer) handleNeighbors(
 	names := params.Arguments.Names
 	direction := params.Arguments.Direction
 	limit := params.Arguments.Limit
-    ents, rels, err := s.db.GetNeighbors(ctx, projectName, names, direction, limit)
+	ents, rels, err := s.db.GetNeighbors(ctx, projectName, names, direction, limit)
 	if err != nil {
 		return nil, fmt.Errorf("neighbors failed: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("neighbors_entities", len(ents))
-    metrics.ObserveToolResultSize("neighbors_relations", len(rels))
+	metrics.ObserveToolResultSize("neighbors_entities", len(ents))
+	metrics.ObserveToolResultSize("neighbors_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Neighbors fetched"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
@@ -789,13 +813,13 @@ func (s *MCPServer) handleWalk(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-    ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
+	ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("walk failed: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("walk_entities", len(ents))
-    metrics.ObserveToolResultSize("walk_relations", len(rels))
+	metrics.ObserveToolResultSize("walk_entities", len(ents))
+	metrics.ObserveToolResultSize("walk_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Walk complete"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
@@ -811,13 +835,13 @@ func (s *MCPServer) handleShortestPath(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-    ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
+	ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
 	if err != nil {
 		return nil, fmt.Errorf("shortest_path failed: %w", err)
 	}
 	success = true
-    metrics.ObserveToolResultSize("shortest_path_entities", len(ents))
-    metrics.ObserveToolResultSize("shortest_path_relations", len(rels))
+	metrics.ObserveToolResultSize("shortest_path_entities", len(ents))
+	metrics.ObserveToolResultSize("shortest_path_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Shortest path found"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
