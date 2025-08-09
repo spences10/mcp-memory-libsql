@@ -349,11 +349,13 @@ func (s *MCPServer) handleCreateEntities(
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	entities := params.Arguments.Entities
 
-	if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
+    if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to create entities: %w", err)
 	}
 	success = true
+    // Observability: record number of entities processed
+    metrics.ObserveToolResultSize("create_entities", len(entities))
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -385,12 +387,15 @@ func (s *MCPServer) handleSearchNodes(
 		offset = 0
 	}
 
-	entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
+    entities, relations, err := s.db.SearchNodes(ctx, projectName, query, limit, offset)
 	if err != nil {
 		success = false
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 	success = true
+    // Observability: sizes of returned sets
+    metrics.ObserveToolResultSize("search_nodes_entities", len(entities))
+    metrics.ObserveToolResultSize("search_nodes_relations", len(relations))
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -420,12 +425,14 @@ func (s *MCPServer) handleReadGraph(
 	if limit <= 0 {
 		limit = 10
 	}
-	entities, relations, err := s.db.ReadGraph(ctx, projectName, limit)
+    entities, relations, err := s.db.ReadGraph(ctx, projectName, limit)
 	if err != nil {
 		success = false
 		return nil, fmt.Errorf("read graph failed: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("read_graph_entities", len(entities))
+    metrics.ObserveToolResultSize("read_graph_relations", len(relations))
 
 	result := &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content: []mcp.Content{
@@ -462,11 +469,12 @@ func (s *MCPServer) handleCreateRelations(
 		}
 	}
 
-	if err := s.db.CreateRelations(ctx, projectName, internalRelations); err != nil {
+    if err := s.db.CreateRelations(ctx, projectName, internalRelations); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to create relations: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("create_relations", len(internalRelations))
 
 	result := &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{
@@ -490,7 +498,7 @@ func (s *MCPServer) handleDeleteEntity(
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	name := params.Arguments.Name
 
-	if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
+    if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to delete entity: %w", err)
 	}
@@ -520,7 +528,7 @@ func (s *MCPServer) handleDeleteRelation(
 	target := params.Arguments.Target
 	relationType := params.Arguments.Type
 
-	if err := s.db.DeleteRelation(ctx, projectName, source, target, relationType); err != nil {
+    if err := s.db.DeleteRelation(ctx, projectName, source, target, relationType); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to delete relation: %w", err)
 	}
@@ -558,11 +566,12 @@ func (s *MCPServer) handleAddObservations(
 		}, nil
 	}
 
-	if err := s.db.AddObservations(ctx, projectName, entityName, observations); err != nil {
+    if err := s.db.AddObservations(ctx, projectName, entityName, observations); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to add observations: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("add_observations", len(observations))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Added %d observations to %q in project %s", len(observations), entityName, projectName)}},
 	}, nil
@@ -594,7 +603,11 @@ func (s *MCPServer) handleOpenNodes(
 			return nil, fmt.Errorf("failed to get relations: %w", err)
 		}
 	}
-	success = true
+    success = true
+    metrics.ObserveToolResultSize("open_nodes_entities", len(entities))
+    if include {
+        metrics.ObserveToolResultSize("open_nodes_relations", len(relations))
+    }
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Open nodes completed"}},
 		StructuredContent: apptype.GraphResult{Entities: entities, Relations: relations},
@@ -612,11 +625,12 @@ func (s *MCPServer) handleDeleteEntities(
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
 	names := params.Arguments.Names
-	if err := s.db.DeleteEntities(ctx, projectName, names); err != nil {
+    if err := s.db.DeleteEntities(ctx, projectName, names); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to delete entities: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("delete_entities", len(names))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d entities in project %s", len(names), projectName)}},
 	}, nil
@@ -636,11 +650,12 @@ func (s *MCPServer) handleDeleteRelations(
 	for i, r := range params.Arguments.Relations {
 		tuples[i] = apptype.Relation(r)
 	}
-	if err := s.db.DeleteRelations(ctx, projectName, tuples); err != nil {
+    if err := s.db.DeleteRelations(ctx, projectName, tuples); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to delete relations: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("delete_relations", len(tuples))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d relations in project %s", len(tuples), projectName)}},
 	}, nil
@@ -659,12 +674,13 @@ func (s *MCPServer) handleDeleteObservations(
 	entity := params.Arguments.EntityName
 	ids := params.Arguments.IDs
 	contents := params.Arguments.Contents
-	ra, err := s.db.DeleteObservations(ctx, projectName, entity, ids, contents)
+    ra, err := s.db.DeleteObservations(ctx, projectName, entity, ids, contents)
 	if err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to delete observations: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("delete_observations", int(ra))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted %d observations from %q in project %s", ra, entity, projectName)}},
 	}, nil
@@ -680,11 +696,12 @@ func (s *MCPServer) handleUpdateEntities(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-	if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
+    if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to update entities: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("update_entities", len(params.Arguments.Updates))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d entities in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -700,11 +717,12 @@ func (s *MCPServer) handleUpdateRelations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-	if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
+    if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
 		return nil, fmt.Errorf("failed to update relations: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("update_relations", len(params.Arguments.Updates))
 	return &mcp.CallToolResultFor[any]{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Updated %d relations in project %s", len(params.Arguments.Updates), projectName)}},
 	}, nil
@@ -749,11 +767,13 @@ func (s *MCPServer) handleNeighbors(
 	names := params.Arguments.Names
 	direction := params.Arguments.Direction
 	limit := params.Arguments.Limit
-	ents, rels, err := s.db.GetNeighbors(ctx, projectName, names, direction, limit)
+    ents, rels, err := s.db.GetNeighbors(ctx, projectName, names, direction, limit)
 	if err != nil {
 		return nil, fmt.Errorf("neighbors failed: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("neighbors_entities", len(ents))
+    metrics.ObserveToolResultSize("neighbors_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Neighbors fetched"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
@@ -769,11 +789,13 @@ func (s *MCPServer) handleWalk(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-	ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
+    ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("walk failed: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("walk_entities", len(ents))
+    metrics.ObserveToolResultSize("walk_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Walk complete"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
@@ -789,11 +811,13 @@ func (s *MCPServer) handleShortestPath(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
-	ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
+    ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
 	if err != nil {
 		return nil, fmt.Errorf("shortest_path failed: %w", err)
 	}
 	success = true
+    metrics.ObserveToolResultSize("shortest_path_entities", len(ents))
+    metrics.ObserveToolResultSize("shortest_path_relations", len(rels))
 	return &mcp.CallToolResultFor[apptype.GraphResult]{
 		Content:           []mcp.Content{&mcp.TextContent{Text: "Shortest path found"}},
 		StructuredContent: apptype.GraphResult{Entities: ents, Relations: rels},
@@ -836,54 +860,54 @@ func (s *MCPServer) RunSSE(ctx context.Context, addr string, endpoint string) er
 			}
 		}
 	}()
-    // Create the SSE handler and attach a heartbeat to reduce idle disconnects.
-    // According to common SSE usage (see MDN and server examples), periodic
-    // comments/data keep intermediaries from closing the connection.
-    handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return s.server })
-    mux := http.NewServeMux()
-    // Wrap the SSE handler to set headers that improve stability across proxies.
-    mux.HandleFunc(endpoint, func(w http.ResponseWriter, r *http.Request) {
-        // Recommended SSE headers
-        w.Header().Set("Cache-Control", "no-cache")
-        w.Header().Set("Connection", "keep-alive")
-        // Disable proxy buffering where applicable (nginx, etc.)
-        w.Header().Set("X-Accel-Buffering", "no")
-        // Allow simple cross-origin usage for local tools (safe for event stream)
-        w.Header().Set("Access-Control-Allow-Origin", "*")
-        // Start a lightweight heartbeat goroutine writing SSE comments every 15s.
-        // This reduces the chance of idle timeouts during session initialization
-        // and long-lived idle periods.
-        flusher, _ := w.(http.Flusher)
-        doneCh := make(chan struct{})
-        go func() {
-            ticker := time.NewTicker(15 * time.Second)
-            defer ticker.Stop()
-            for {
-                select {
-                case <-doneCh:
-                    return
-                case <-ticker.C:
-                    // Write an SSE comment as heartbeat
-                    _, _ = w.Write([]byte(": keep-alive\n\n"))
-                    if flusher != nil {
-                        flusher.Flush()
-                    }
-                }
-            }
-        }()
-        // Serve the actual SSE stream
-        handler.ServeHTTP(w, r)
-        close(doneCh)
-    })
-    // Avoid server-side timeouts on long-lived SSE connections. Zero means no timeout.
-    srv := &http.Server{
-        Addr:              addr,
-        Handler:           mux,
-        ReadTimeout:       0,
-        ReadHeaderTimeout: 0,
-        WriteTimeout:      0,
-        IdleTimeout:       0,
-    }
+	// Create the SSE handler and attach a heartbeat to reduce idle disconnects.
+	// According to common SSE usage (see MDN and server examples), periodic
+	// comments/data keep intermediaries from closing the connection.
+	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return s.server })
+	mux := http.NewServeMux()
+	// Wrap the SSE handler to set headers that improve stability across proxies.
+	mux.HandleFunc(endpoint, func(w http.ResponseWriter, r *http.Request) {
+		// Recommended SSE headers
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		// Disable proxy buffering where applicable (nginx, etc.)
+		w.Header().Set("X-Accel-Buffering", "no")
+		// Allow simple cross-origin usage for local tools (safe for event stream)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// Start a lightweight heartbeat goroutine writing SSE comments every 15s.
+		// This reduces the chance of idle timeouts during session initialization
+		// and long-lived idle periods.
+		flusher, _ := w.(http.Flusher)
+		doneCh := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-doneCh:
+					return
+				case <-ticker.C:
+					// Write an SSE comment as heartbeat
+					_, _ = w.Write([]byte(": keep-alive\n\n"))
+					if flusher != nil {
+						flusher.Flush()
+					}
+				}
+			}
+		}()
+		// Serve the actual SSE stream
+		handler.ServeHTTP(w, r)
+		close(doneCh)
+	})
+	// Avoid server-side timeouts on long-lived SSE connections. Zero means no timeout.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       0,
+		ReadHeaderTimeout: 0,
+		WriteTimeout:      0,
+		IdleTimeout:       0,
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -892,6 +916,6 @@ func (s *MCPServer) RunSSE(ctx context.Context, addr string, endpoint string) er
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-    log.Printf("SSE MCP server listening on %s%s (no server timeouts; keep-alive headers enabled)", addr, endpoint)
+	log.Printf("SSE MCP server listening on %s%s (no server timeouts; keep-alive headers enabled)", addr, endpoint)
 	return srv.ListenAndServe()
 }
