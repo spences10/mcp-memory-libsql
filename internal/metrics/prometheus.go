@@ -15,6 +15,7 @@ type promRecorder struct {
 	dbSeconds   *prom.HistogramVec
 	toolTotal   *prom.CounterVec
 	toolSeconds *prom.HistogramVec
+    toolSize    *prom.HistogramVec
 	stmtHit     *prom.CounterVec
 	poolGauge   *prom.GaugeVec
 }
@@ -33,6 +34,11 @@ func (p *promRecorder) IncToolTotal(tool string, success bool) {
 
 func (p *promRecorder) ObserveToolSeconds(tool string, success bool, seconds float64) {
 	p.toolSeconds.WithLabelValues(tool, fmt.Sprintf("%t", success)).Observe(seconds)
+}
+
+func (p *promRecorder) ObserveToolResultSize(tool string, size int) {
+    // Bucket sizes exponentially (bytes/items depending on context). Use generic buckets.
+    p.toolSize.WithLabelValues(tool).Observe(float64(size))
 }
 
 func (p *promRecorder) IncStmtCacheHit(op string) {
@@ -69,6 +75,11 @@ func enablePrometheus(addr string) error {
 			Help:    "Tool handler duration in seconds",
 			Buckets: prom.DefBuckets,
 		}, []string{"tool", "success"}),
+        toolSize: prom.NewHistogramVec(prom.HistogramOpts{
+            Name:    "tool_result_size",
+            Help:    "Tool result size (units: items/bytes depending on tool context)",
+            Buckets: []float64{1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2500, 5000},
+        }, []string{"tool"}),
 		stmtHit: prom.NewCounterVec(prom.CounterOpts{
 			Name: "stmt_cache_events_total",
 			Help: "Statement cache hit/miss events",
@@ -79,7 +90,7 @@ func enablePrometheus(addr string) error {
 		}, []string{"state"}),
 	}
 
-	registry.MustRegister(p.dbTotal, p.dbSeconds, p.toolTotal, p.toolSeconds, p.stmtHit, p.poolGauge)
+    registry.MustRegister(p.dbTotal, p.dbSeconds, p.toolTotal, p.toolSeconds, p.toolSize, p.stmtHit, p.poolGauge)
 	SetRecorder(p)
 
 	mux := http.NewServeMux()

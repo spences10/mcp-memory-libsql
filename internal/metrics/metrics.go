@@ -1,9 +1,11 @@
 package metrics
 
 import (
-	"os"
-	"sync"
-	"time"
+    "os"
+    "strconv"
+    "sync"
+    "sync/atomic"
+    "time"
 )
 
 // Package metrics provides a minimal instrumentation interface with a no-op
@@ -15,6 +17,8 @@ type Recorder interface {
 	ObserveDBOpSeconds(op string, success bool, seconds float64)
 	IncToolTotal(tool string, success bool)
 	ObserveToolSeconds(tool string, success bool, seconds float64)
+    // Optional: result size metrics (low-cardinality by tool)
+    ObserveToolResultSize(tool string, size int)
 	// Optional: statement-cache and pool metrics
 	IncStmtCacheHit(op string)
 	IncStmtCacheMiss(op string)
@@ -28,6 +32,7 @@ func (n *noopRecorder) IncDBOpTotal(string, bool)                {}
 func (n *noopRecorder) ObserveDBOpSeconds(string, bool, float64) {}
 func (n *noopRecorder) IncToolTotal(string, bool)                {}
 func (n *noopRecorder) ObserveToolSeconds(string, bool, float64) {}
+func (n *noopRecorder) ObserveToolResultSize(string, int)        {}
 func (n *noopRecorder) IncStmtCacheHit(string)                   {}
 func (n *noopRecorder) IncStmtCacheMiss(string)                  {}
 func (n *noopRecorder) ObservePoolStats(int, int)                {}
@@ -39,6 +44,9 @@ var (
 	// are performed at most once across the process, even if InitFromEnv is
 	// called from multiple code paths (e.g., main and server constructors).
 	serveOnce sync.Once
+    // sampling controls for result-size observations
+    sampleEveryN int64 = 1
+    toolCounters sync.Map // string -> *uint64
 )
 
 // Default returns the current recorder.
@@ -83,6 +91,11 @@ func InitFromEnv() {
 	if os.Getenv("METRICS_PROMETHEUS") == "" {
 		return
 	}
+    if v := os.Getenv("METRICS_RESULT_SAMPLE_N"); v != "" {
+        if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+            sampleEveryN = n
+        }
+    }
 	addr := os.Getenv("METRICS_ADDR")
 	if addr == "" {
 		addr = ":9090"
@@ -92,6 +105,24 @@ func InitFromEnv() {
 		// Try to install prometheus recorder; if it fails, keep noop.
 		_ = enablePrometheus(addr)
 	})
+}
+
+// ObserveToolResultSize records a histogram of result sizes for a tool, applying
+// basic sampling to reduce cardinality/volume. Sampling rate is controlled by
+// METRICS_RESULT_SAMPLE_N (default 1 = every call).
+func ObserveToolResultSize(tool string, size int) {
+    n := sampleEveryN
+    if n <= 1 {
+        Default().ObserveToolResultSize(tool, size)
+        return
+    }
+    // Per-tool counter
+    cPtr, _ := toolCounters.LoadOrStore(tool, new(uint64))
+    ctr := cPtr.(*uint64)
+    v := atomic.AddUint64(ctr, 1)
+    if int64(v)%n == 0 {
+        Default().ObserveToolResultSize(tool, size)
+    }
 }
 
 // enablePrometheus is provided by build-tagged files.
