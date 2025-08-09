@@ -41,6 +41,7 @@ Standardize how we create and synchronize GitHub issues with Knowledge Graph `Ta
    - For each `Task:*`, write back a single observation: `GitHub: <url>`
    - If a link already exists, UPDATE/REPLACE it; do not append a second link.
    - Link `Task:*` to `Repo:*` via relation `tracks`.
+   - Ensure that KG & GH are updated IMMEDIATELY AFTER EVERY TASK COMPLETION, consider this step the last step of every task given. 
 
 5) On mistakes (duplicates)
    - Close duplicates rather than deleting the issue.

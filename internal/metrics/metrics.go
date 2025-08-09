@@ -35,6 +35,10 @@ func (n *noopRecorder) ObservePoolStats(int, int)                {}
 var (
 	recMu    sync.RWMutex
 	recorder Recorder = &noopRecorder{}
+	// serveOnce ensures the metrics HTTP listener and recorder initialization
+	// are performed at most once across the process, even if InitFromEnv is
+	// called from multiple code paths (e.g., main and server constructors).
+	serveOnce sync.Once
 )
 
 // Default returns the current recorder.
@@ -75,6 +79,7 @@ func TimeTool(tool string) func(success bool) {
 // It also starts a small HTTP server on METRICS_ADDR (default :9090)
 // with endpoints: /metrics (prom) and /healthz (200 ok).
 func InitFromEnv() {
+	// Only proceed when explicitly enabled via env.
 	if os.Getenv("METRICS_PROMETHEUS") == "" {
 		return
 	}
@@ -82,8 +87,11 @@ func InitFromEnv() {
 	if addr == "" {
 		addr = ":9090"
 	}
-	// Try to install prometheus recorder; if it fails, keep noop.
-	_ = enablePrometheus(addr)
+	// Idempotent initialization: ensure listener/recorder starts once.
+	serveOnce.Do(func() {
+		// Try to install prometheus recorder; if it fails, keep noop.
+		_ = enablePrometheus(addr)
+	})
 }
 
 // enablePrometheus is provided by build-tagged files.
