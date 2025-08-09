@@ -169,15 +169,19 @@ type DBManager struct {
 	// stmtCache holds prepared statements per project DB: project -> (sql -> *Stmt)
 	stmtCache map[string]map[string]*sql.Stmt
 	stmtMu    sync.RWMutex
-	// caps holds runtime-detected optional capabilities
-	caps struct {
-		checked    bool
-		vectorTopK bool
-		fts5       bool
-	}
+    // capsByProject holds runtime-detected optional capabilities per project
+    capMu        sync.RWMutex
+    capsByProject map[string]capFlags
 	provider embeddings.Provider
 	// search provides strategy-based search (text/vector). Default uses built-ins.
 	search SearchStrategy
+}
+
+// capFlags stores capability detection for a specific project/DB handle
+type capFlags struct {
+    checked    bool
+    vectorTopK bool
+    fts5       bool
 }
 
 // SetEmbeddingsProvider overrides the embeddings provider (primarily for tests)
@@ -241,10 +245,11 @@ func NewDBManager(config *Config) (*DBManager, error) {
 	if config.EmbeddingDims <= 0 || config.EmbeddingDims > 65536 {
 		return nil, fmt.Errorf("{\"error\":{\"code\":\"INVALID_EMBEDDING_DIMS\",\"message\":\"EMBEDDING_DIMS must be between 1 and 65536 inclusive\",\"value\":%d}}", config.EmbeddingDims)
 	}
-	manager := &DBManager{
+    manager := &DBManager{
 		config:    config,
 		dbs:       make(map[string]*sql.DB),
 		stmtCache: make(map[string]map[string]*sql.Stmt),
+        capsByProject: make(map[string]capFlags),
 	}
 	manager.provider = embeddings.NewFromEnv()
 	// Choose search strategy (default or hybrid via env)
@@ -359,8 +364,8 @@ func (dm *DBManager) getDB(projectName string) (*sql.DB, error) {
 	dm.stmtMu.Unlock()
 	// Unlock before capability detection to avoid self-deadlock
 	dm.mu.Unlock()
-	// Detect optional capabilities once
-	dm.detectCapabilities(context.Background(), newDb)
+    // Detect optional capabilities for this project DB handle
+    dm.detectCapabilitiesForProject(context.Background(), projectName, newDb)
 	// Observe initial pool stats
 	stats := newDb.Stats()
 	metrics.Default().ObservePoolStats(stats.InUse, stats.Idle)
@@ -421,20 +426,19 @@ func (dm *DBManager) initialize(db *sql.DB) error {
 }
 
 // detectCapabilities probes presence of vector_top_k and records flags.
-func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
-	dm.mu.Lock()
-	if dm.caps.checked {
-		dm.mu.Unlock()
-		return
-	}
-	dm.mu.Unlock()
+func (dm *DBManager) detectCapabilitiesForProject(ctx context.Context, projectName string, db *sql.DB) {
+    dm.capMu.RLock()
+    caps, ok := dm.capsByProject[projectName]
+    dm.capMu.RUnlock()
+    if ok && caps.checked {
+        return
+    }
 
 	// Skip ANN probe for in-memory test URLs to avoid driver quirks
 	if strings.Contains(dm.config.URL, "mode=memory") {
-		dm.mu.Lock()
-		dm.caps.vectorTopK = false
-		dm.caps.checked = true
-		dm.mu.Unlock()
+        dm.capMu.Lock()
+        dm.capsByProject[projectName] = capFlags{checked: true, vectorTopK: false, fts5: caps.fts5}
+        dm.capMu.Unlock()
 		return
 	}
 
@@ -442,14 +446,12 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	// Attempt to call vector_top_k with a short timeout; close rows if opened
 	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	rows, err := db.QueryContext(ctx2, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
+    rows, err := db.QueryContext(ctx2, "SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), 1) LIMIT 1", zero)
 	if rows != nil {
 		rows.Close()
 	}
-	dm.mu.Lock()
-	dm.caps.vectorTopK = (err == nil)
-	dm.caps.checked = true
-	dm.mu.Unlock()
+    caps.vectorTopK = (err == nil)
+    caps.checked = true
 
 	// Detect FTS5 support by attempting to create a temporary virtual table
 	ctx3, cancel3 := context.WithTimeout(ctx, 500*time.Millisecond)
@@ -457,16 +459,15 @@ func (dm *DBManager) detectCapabilities(ctx context.Context, db *sql.DB) {
 	if _, err := db.ExecContext(ctx3, "CREATE VIRTUAL TABLE IF NOT EXISTS temp._fts5_probe USING fts5(x)"); err == nil {
 		// Clean up probe table
 		_, _ = db.ExecContext(ctx3, "DROP TABLE IF EXISTS temp._fts5_probe")
-		dm.mu.Lock()
-		dm.caps.fts5 = true
-		dm.mu.Unlock()
+        caps.fts5 = true
 		// Ensure FTS schema/triggers exist for observations
 		_ = dm.ensureFTSSchema(context.Background(), db)
 	} else {
-		dm.mu.Lock()
-		dm.caps.fts5 = false
-		dm.mu.Unlock()
+        caps.fts5 = false
 	}
+    dm.capMu.Lock()
+    dm.capsByProject[projectName] = caps
+    dm.capMu.Unlock()
 }
 
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported
@@ -875,9 +876,10 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 	zeroString := dm.vectorZeroString()
 
 	// Prefer vector_top_k if available; fallback to exact ORDER BY path
-	dm.mu.RLock()
-	useTopK := dm.caps.vectorTopK
-	dm.mu.RUnlock()
+    dm.capMu.RLock()
+    caps := dm.capsByProject[projectName]
+    dm.capMu.RUnlock()
+    useTopK := caps.vectorTopK
 
 	var rows *sql.Rows
 	if useTopK {
@@ -899,11 +901,13 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 			return nil, perr
 		}
 		rows, err = stmt.QueryContext(ctx, vectorString, k, vectorString, zeroString, limit, offset)
-		if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such function: vector_top_k") {
+        if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such function: vector_top_k") {
 			// downgrade capability and fall back
-			dm.mu.Lock()
-			dm.caps.vectorTopK = false
-			dm.mu.Unlock()
+            dm.capMu.Lock()
+            c := dm.capsByProject[projectName]
+            c.vectorTopK = false
+            dm.capsByProject[projectName] = c
+            dm.capMu.Unlock()
 			useTopK = false
 		} else if err != nil {
 			return nil, fmt.Errorf("failed ANN search: %w", err)
@@ -1182,9 +1186,10 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		offset = 0
 	}
 	// Prefer FTS5 if available
-	dm.mu.RLock()
-	useFTS := dm.caps.fts5
-	dm.mu.RUnlock()
+    dm.capMu.RLock()
+    caps := dm.capsByProject[projectName]
+    dm.capMu.RUnlock()
+    useFTS := caps.fts5
 	var rows *sql.Rows
 	if useFTS {
 		const qfts = `SELECT DISTINCT e.name, e.entity_type, e.embedding
@@ -1203,9 +1208,11 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 			low := strings.ToLower(err.Error())
 			if strings.Contains(low, "no such module: fts5") || strings.Contains(low, "malformed MATCH") {
 				// downgrade to LIKE path
-				dm.mu.Lock()
-				dm.caps.fts5 = false
-				dm.mu.Unlock()
+                dm.capMu.Lock()
+                c := dm.capsByProject[projectName]
+                c.fts5 = false
+                dm.capsByProject[projectName] = c
+                dm.capMu.Unlock()
 				useFTS = false
 			} else {
 				return nil, fmt.Errorf("failed to execute FTS search: %w", err)
@@ -2211,42 +2218,42 @@ func coerceToFloat32Slice(value interface{}) ([]float32, bool, error) {
 
 // Close closes all database connections
 func (dm *DBManager) Close() error {
-    // Close cached prepared statements first to avoid descriptor leaks
-    dm.stmtMu.Lock()
-    for proj, cache := range dm.stmtCache {
-        for sqlText, stmt := range cache {
-            if stmt != nil {
-                _ = stmt.Close()
-            }
-            // clear entry
-            cache[sqlText] = nil
-            delete(cache, sqlText)
-        }
-        // remove project bucket
-        delete(dm.stmtCache, proj)
-    }
-    dm.stmtMu.Unlock()
+	// Close cached prepared statements first to avoid descriptor leaks
+	dm.stmtMu.Lock()
+	for proj, cache := range dm.stmtCache {
+		for sqlText, stmt := range cache {
+			if stmt != nil {
+				_ = stmt.Close()
+			}
+			// clear entry
+			cache[sqlText] = nil
+			delete(cache, sqlText)
+		}
+		// remove project bucket
+		delete(dm.stmtCache, proj)
+	}
+	dm.stmtMu.Unlock()
 
-    // Now close DB connections
-    dm.mu.Lock()
-    defer dm.mu.Unlock()
+	// Now close DB connections
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
 
-    var errs []error
-    for name, db := range dm.dbs {
-        if err := db.Close(); err != nil {
-            errs = append(errs, fmt.Errorf("failed to close database for project %s: %w", name, err))
-        }
-        delete(dm.dbs, name)
-    }
+	var errs []error
+	for name, db := range dm.dbs {
+		if err := db.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close database for project %s: %w", name, err))
+		}
+		delete(dm.dbs, name)
+	}
 
-    if len(errs) > 0 {
-        // Combine multiple errors into one
-        errorMessages := make([]string, len(errs))
-        for i, err := range errs {
-            errorMessages[i] = err.Error()
-        }
-        return fmt.Errorf("%s", strings.Join(errorMessages, "; "))
-    }
+	if len(errs) > 0 {
+		// Combine multiple errors into one
+		errorMessages := make([]string, len(errs))
+		for i, err := range errs {
+			errorMessages[i] = err.Error()
+		}
+		return fmt.Errorf("%s", strings.Join(errorMessages, "; "))
+	}
 
-    return nil
+	return nil
 }
