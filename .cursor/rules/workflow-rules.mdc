@@ -1,0 +1,78 @@
+---
+title: workflow-rules
+description: Project workflow (GitHub CLI + Knowledge Graph sync)
+alwaysApply: true
+version: 1.1
+---
+
+## Purpose
+Standardize how we create and synchronize GitHub issues with Knowledge Graph `Task:*` entities. Prevent duplicates, ensure reliable shell behavior, and maintain a single canonical link per task.
+
+## Prerequisites
+- Authenticated GitHub CLI: `gh auth status`
+- Derive repo slug dynamically (never hardcode):
+  - `gh repo view --json nameWithOwner -q .nameWithOwner`
+- If no default repo is set and a command errors, set it:
+  - `gh repo set-default <owner/repo>`
+
+## Canonical Workflow
+1) Discover repository slug
+   - `SLUG=$(gh repo view --json nameWithOwner -q .nameWithOwner)`
+
+2) De-dup BEFORE creating issues
+   - Search by normalized title/label. If a matching issue exists, DO NOT create a new one; log the URL and continue.
+   - Examples:
+     - `gh issue list --repo "$SLUG" --search 'in:title "<normalized-title>"' --json number,title,url`
+
+3) Create issues using here-doc files (-F)
+   - Always write the body to a file and use `-F` to avoid quoting problems.
+   - Example:
+     ```sh
+     cat > /tmp/issue.md <<'EOF'
+     Context: <why>
+     Acceptance criteria:
+     - item 1
+     - item 2
+     EOF
+     gh issue create --repo "$SLUG" -t "P0: <Title> — <short>" -F /tmp/issue.md -l enhancement
+     ```
+
+4) Knowledge Graph sync (exactly one link)
+   - For each `Task:*`, write back a single observation: `GitHub: <url>`
+   - If a link already exists, UPDATE/REPLACE it; do not append a second link.
+   - Link `Task:*` to `Repo:*` via relation `tracks`.
+
+5) On mistakes (duplicates)
+   - Close duplicates rather than deleting the issue.
+   - Re-sync KG: remove stale GitHub link observations so only the canonical link remains.
+
+## Mapping & Naming
+- Maintain stable ordering: map core tasks to issues `#1–#N`. Add new tasks incrementally (e.g., new P0 becomes next number).
+- Titles: `P{0|1|2}: <TaskName> — <short description>`
+- Labels: `bug` for defects; `enhancement` for task/feature work.
+
+## Verification Steps
+- Issue counts:
+  - `gh issue list --repo "$SLUG" --state open --json number -q 'length'`
+- KG consistency:
+  - Read back `Task:*` entities and assert exactly one observation matching `^GitHub: https://`.
+
+## KG Operations (Guidance)
+- Create/update tasks as `Task:*` entities; relate them to `Repo:*` with `tracks`.
+- Write a single observation per task in the exact format: `GitHub: <url>`
+- If cleanup is required:
+  - Prefer ID-based deletes if content-based bulk delete fails.
+  - Example flow:
+    - Open node to fetch observations → collect IDs → delete by IDs → add the canonical observation.
+
+## Safety & Idempotency
+- Always derive `SLUG` from GH CLI; never assume remotes/host aliases.
+- Re-running the workflow MUST be idempotent:
+  - Skip creation when an issue with the same normalized title exists.
+  - Replace, don’t append, the GitHub link in KG.
+
+## Quick Reference
+- Derive repo: `gh repo view --json nameWithOwner -q .nameWithOwner`
+- Create with file: `gh issue create --repo "$SLUG" -t "..." -F /tmp/body.md -l enhancement`
+- Verify open count: `gh issue list --repo "$SLUG" --state open --json number -q 'length'`
+- KG policy: one `GitHub:` link per `Task:*`; close dup issues; remove stale links; keep #1–#N task mapping

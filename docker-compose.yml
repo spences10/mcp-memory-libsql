@@ -110,6 +110,7 @@ services:
       - LOCALAI_BASE_URL
       - LOCALAI_EMBEDDINGS_MODEL
       - LOCALAI_API_KEY
+    restart: unless-stopped
     command:
       [
         "-transport",
@@ -136,7 +137,12 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ollama:/root/.ollama
+      - type: bind
+        source: ./ollama_models
+        target: /root/.ollama/models
+      - ./ollama-entrypoint.sh:/ollama-entrypoint.sh
+    entrypoint: ["/bin/sh", "/ollama-entrypoint.sh"]
+    restart: unless-stopped
     profiles: ["ollama"]
 
   # Optional: LocalAI (OpenAI-compatible)
@@ -147,9 +153,8 @@ services:
     ports:
       - "8082:8080"
     volumes:
-      - localai-models:/models
+      - type: bind
+        source: ./localai_models
+        target: /models
+    restart: unless-stopped
     profiles: ["localai"]
-
-volumes:
-  ollama: {}
-  localai-models: {}

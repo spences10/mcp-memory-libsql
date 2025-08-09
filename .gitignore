@@ -40,3 +40,5 @@ database.test
 .env*
 
 data/
+ollama_models/
+localai_models/
