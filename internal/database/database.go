@@ -2211,24 +2211,42 @@ func coerceToFloat32Slice(value interface{}) ([]float32, bool, error) {
 
 // Close closes all database connections
 func (dm *DBManager) Close() error {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
+    // Close cached prepared statements first to avoid descriptor leaks
+    dm.stmtMu.Lock()
+    for proj, cache := range dm.stmtCache {
+        for sqlText, stmt := range cache {
+            if stmt != nil {
+                _ = stmt.Close()
+            }
+            // clear entry
+            cache[sqlText] = nil
+            delete(cache, sqlText)
+        }
+        // remove project bucket
+        delete(dm.stmtCache, proj)
+    }
+    dm.stmtMu.Unlock()
 
-	var errs []error
-	for name, db := range dm.dbs {
-		if err := db.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to close database for project %s: %w", name, err))
-		}
-	}
+    // Now close DB connections
+    dm.mu.Lock()
+    defer dm.mu.Unlock()
 
-	if len(errs) > 0 {
-		// Combine multiple errors into one
-		errorMessages := make([]string, len(errs))
-		for i, err := range errs {
-			errorMessages[i] = err.Error()
-		}
-		return fmt.Errorf("%s", strings.Join(errorMessages, "; "))
-	}
+    var errs []error
+    for name, db := range dm.dbs {
+        if err := db.Close(); err != nil {
+            errs = append(errs, fmt.Errorf("failed to close database for project %s: %w", name, err))
+        }
+        delete(dm.dbs, name)
+    }
 
-	return nil
+    if len(errs) > 0 {
+        // Combine multiple errors into one
+        errorMessages := make([]string, len(errs))
+        for i, err := range errs {
+            errorMessages[i] = err.Error()
+        }
+        return fmt.Errorf("%s", strings.Join(errorMessages, "; "))
+    }
+
+    return nil
 }
