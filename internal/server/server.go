@@ -836,10 +836,54 @@ func (s *MCPServer) RunSSE(ctx context.Context, addr string, endpoint string) er
 			}
 		}
 	}()
-	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return s.server })
-	mux := http.NewServeMux()
-	mux.Handle(endpoint, handler)
-	srv := &http.Server{Addr: addr, Handler: mux}
+    // Create the SSE handler and attach a heartbeat to reduce idle disconnects.
+    // According to common SSE usage (see MDN and server examples), periodic
+    // comments/data keep intermediaries from closing the connection.
+    handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return s.server })
+    mux := http.NewServeMux()
+    // Wrap the SSE handler to set headers that improve stability across proxies.
+    mux.HandleFunc(endpoint, func(w http.ResponseWriter, r *http.Request) {
+        // Recommended SSE headers
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("Connection", "keep-alive")
+        // Disable proxy buffering where applicable (nginx, etc.)
+        w.Header().Set("X-Accel-Buffering", "no")
+        // Allow simple cross-origin usage for local tools (safe for event stream)
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        // Start a lightweight heartbeat goroutine writing SSE comments every 15s.
+        // This reduces the chance of idle timeouts during session initialization
+        // and long-lived idle periods.
+        flusher, _ := w.(http.Flusher)
+        doneCh := make(chan struct{})
+        go func() {
+            ticker := time.NewTicker(15 * time.Second)
+            defer ticker.Stop()
+            for {
+                select {
+                case <-doneCh:
+                    return
+                case <-ticker.C:
+                    // Write an SSE comment as heartbeat
+                    _, _ = w.Write([]byte(": keep-alive\n\n"))
+                    if flusher != nil {
+                        flusher.Flush()
+                    }
+                }
+            }
+        }()
+        // Serve the actual SSE stream
+        handler.ServeHTTP(w, r)
+        close(doneCh)
+    })
+    // Avoid server-side timeouts on long-lived SSE connections. Zero means no timeout.
+    srv := &http.Server{
+        Addr:              addr,
+        Handler:           mux,
+        ReadTimeout:       0,
+        ReadHeaderTimeout: 0,
+        WriteTimeout:      0,
+        IdleTimeout:       0,
+    }
 
 	go func() {
 		<-ctx.Done()
@@ -848,6 +892,6 @@ func (s *MCPServer) RunSSE(ctx context.Context, addr string, endpoint string) er
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("SSE MCP server listening on %s%s", addr, endpoint)
+    log.Printf("SSE MCP server listening on %s%s (no server timeouts; keep-alive headers enabled)", addr, endpoint)
 	return srv.ListenAndServe()
 }
