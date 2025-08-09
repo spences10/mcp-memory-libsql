@@ -1453,32 +1453,44 @@ func (dm *DBManager) DeleteEntities(ctx context.Context, projectName string, nam
 	done := metrics.TimeOp("db_delete_entities")
 	success := false
 	defer func() { done(success) }()
-	db, err := dm.getDB(projectName)
+    db, err := dm.getDB(projectName)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
 		return nil
 	}
-	// Perform per-entity deletions without a single transaction to avoid driver quirks
-	// around modifying tables that may be in use by cached read statements.
-	for _, name := range names {
-		if strings.TrimSpace(name) == "" {
-			continue
-		}
-		// Delete observations (all) for the entity
-		if _, err := dm.DeleteObservations(ctx, projectName, name, nil, nil); err != nil {
-			return fmt.Errorf("failed to delete observations for %q: %w", name, err)
-		}
-		// Delete relations touching the entity
-		if _, err := db.ExecContext(ctx, "DELETE FROM relations WHERE source = ? OR target = ?", name, name); err != nil {
-			return fmt.Errorf("failed to delete relations for %q: %w", name, err)
-		}
-		// Finally delete the entity
-		if _, err := db.ExecContext(ctx, "DELETE FROM entities WHERE name = ?", name); err != nil {
-			return fmt.Errorf("failed to delete entity %q: %w", name, err)
-		}
-	}
+    // Transactional, chunked bulk delete relying on trigger cascade
+    tx, err := db.BeginTx(ctx, nil)
+    if err != nil {
+        return fmt.Errorf("failed to begin transaction: %w", err)
+    }
+    defer tx.Rollback()
+
+    // SQLite has a limit on bound variables (commonly 999). Use conservative chunking.
+    const maxParams = 500
+    var chunk []string
+    for i := 0; i < len(names); i += maxParams {
+        end := i + maxParams
+        if end > len(names) {
+            end = len(names)
+        }
+        chunk = names[i:end]
+        // Build placeholders and args
+        placeholders := strings.Repeat("?,", len(chunk))
+        placeholders = placeholders[:len(placeholders)-1]
+        q := fmt.Sprintf("DELETE FROM entities WHERE name IN (%s)", placeholders)
+        args := make([]interface{}, len(chunk))
+        for j, n := range chunk {
+            args[j] = n
+        }
+        if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+            return fmt.Errorf("failed bulk entity delete: %w", err)
+        }
+    }
+    if err := tx.Commit(); err != nil {
+        return err
+    }
 	success = true
 	return nil
 }
@@ -1529,7 +1541,7 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 	if strings.TrimSpace(entityName) == "" {
 		return 0, fmt.Errorf("entityName cannot be empty")
 	}
-	if len(ids) == 0 && len(contents) == 0 {
+    if len(ids) == 0 && len(contents) == 0 {
 		// delete all for entity
 		res, err := db.ExecContext(ctx, "DELETE FROM observations WHERE entity_name = ?", entityName)
 		if err != nil {
@@ -1544,39 +1556,54 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	var total int64
-	if len(ids) > 0 {
-		placeholders := strings.Repeat("?,", len(ids))
-		placeholders = placeholders[:len(placeholders)-1]
-		args := make([]interface{}, 0, len(ids)+1)
-		args = append(args, entityName)
-		for _, id := range ids {
-			args = append(args, id)
-		}
-		q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND id IN (%s)", placeholders)
-		res, err := tx.ExecContext(ctx, q, args...)
-		if err != nil {
-			return 0, fmt.Errorf("failed to delete observations by id: %w", err)
-		}
-		ra, _ := res.RowsAffected()
-		total += ra
-	}
-	if len(contents) > 0 {
-		placeholders := strings.Repeat("?,", len(contents))
-		placeholders = placeholders[:len(placeholders)-1]
-		args := make([]interface{}, 0, len(contents)+1)
-		args = append(args, entityName)
-		for _, c := range contents {
-			args = append(args, c)
-		}
-		q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND content IN (%s)", placeholders)
-		res, err := tx.ExecContext(ctx, q, args...)
-		if err != nil {
-			return 0, fmt.Errorf("failed to delete observations by content: %w", err)
-		}
-		ra, _ := res.RowsAffected()
-		total += ra
-	}
+    var total int64
+    const maxParams = 500
+    if len(ids) > 0 {
+        for i := 0; i < len(ids); i += maxParams {
+            end := i + maxParams
+            if end > len(ids) {
+                end = len(ids)
+            }
+            chunk := ids[i:end]
+            placeholders := strings.Repeat("?,", len(chunk))
+            placeholders = placeholders[:len(placeholders)-1]
+            args := make([]interface{}, 0, len(chunk)+1)
+            args = append(args, entityName)
+            for _, id := range chunk {
+                args = append(args, id)
+            }
+            q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND id IN (%s)", placeholders)
+            res, err := tx.ExecContext(ctx, q, args...)
+            if err != nil {
+                return 0, fmt.Errorf("failed to delete observations by id: %w", err)
+            }
+            ra, _ := res.RowsAffected()
+            total += ra
+        }
+    }
+    if len(contents) > 0 {
+        for i := 0; i < len(contents); i += maxParams {
+            end := i + maxParams
+            if end > len(contents) {
+                end = len(contents)
+            }
+            chunk := contents[i:end]
+            placeholders := strings.Repeat("?,", len(chunk))
+            placeholders = placeholders[:len(placeholders)-1]
+            args := make([]interface{}, 0, len(chunk)+1)
+            args = append(args, entityName)
+            for _, c := range chunk {
+                args = append(args, c)
+            }
+            q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND content IN (%s)", placeholders)
+            res, err := tx.ExecContext(ctx, q, args...)
+            if err != nil {
+                return 0, fmt.Errorf("failed to delete observations by content: %w", err)
+            }
+            ra, _ := res.RowsAffected()
+            total += ra
+        }
+    }
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
