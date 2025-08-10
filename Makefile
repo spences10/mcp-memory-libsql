@@ -7,6 +7,7 @@ BINARY_NAME=mcp-memory-libsql-go
 MAIN_PACKAGE=./cmd/${BINARY_NAME}
 BINARY_LOCATION=$(shell pwd)/bin/$(BINARY_NAME)
 INTEGRATION_TESTER=./cmd/integration-tester
+INTEGRATION_TESTER_BINARY=$(shell pwd)/bin/integration-tester
 VERSION ?= $(shell git describe --tags --always --dirty)
 REVISION ?= $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -31,6 +32,12 @@ all: build
 .PHONY: build
 build:
 	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY_LOCATION) $(MAIN_PACKAGE)
+
+# Build the integration tester into bin/
+.PHONY: build-integration
+build-integration:
+	mkdir -p $(shell pwd)/bin
+	CGO_ENABLED=1 go build $(LDFLAGS) -o $(INTEGRATION_TESTER_BINARY) $(INTEGRATION_TESTER)
 
 # Install dependencies
 .PHONY: deps

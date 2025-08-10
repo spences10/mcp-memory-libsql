@@ -41,7 +41,7 @@ func main() {
 
 	start := time.Now()
 	report := Report{SSEURL: *sseURL, StartedAt: start}
-	steps := make([]StepResult, 0, 9)
+	steps := make([]StepResult, 0, 16)
 
 	// Connect
 	tConn := time.Now()
@@ -74,6 +74,12 @@ func main() {
 	steps = append(steps, runNeighbors(ctx, session, *project))
 	steps = append(steps, runWalk(ctx, session, *project))
 	steps = append(steps, runShortestPath(ctx, session, *project))
+	// DELETE tests on fresh instance
+	steps = append(steps, runDeleteRelation(ctx, session, *project, "b", "c", "r"))
+	steps = append(steps, runDeleteRelations(ctx, session, *project, []apptype.RelationTuple{{From: "a", To: "d", RelationType: "r"}}))
+	steps = append(steps, runDeleteObservationsByContents(ctx, session, *project, "a", []string{"oa"}))
+	steps = append(steps, runDeleteEntity(ctx, session, *project, "n1"))
+	steps = append(steps, runDeleteEntities(ctx, session, *project, []string{"a", "b"}))
 
 	// finalize report
 	report.Steps = steps
@@ -251,6 +257,104 @@ func runShortestPath(ctx context.Context, session *mcp.ClientSession, project st
 	}
 	raw, _ := json.Marshal(args)
 	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "shortest_path", Arguments: json.RawMessage(raw)})
+	if err != nil {
+		res.Success = false
+		res.Error = err.Error()
+	} else {
+		res.Success = true
+	}
+	res.ElapsedMs = elapsedMsSince(t0)
+	return res
+}
+
+func runDeleteRelation(ctx context.Context, session *mcp.ClientSession, project, from, to, relType string) StepResult {
+	t0 := time.Now()
+	res := StepResult{Name: "delete_relation"}
+	args := apptype.DeleteRelationArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: project},
+		Source:      from,
+		Target:      to,
+		Type:        relType,
+	}
+	raw, _ := json.Marshal(args)
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "delete_relation", Arguments: json.RawMessage(raw)})
+	if err != nil {
+		res.Success = false
+		res.Error = err.Error()
+	} else {
+		res.Success = true
+	}
+	res.ElapsedMs = elapsedMsSince(t0)
+	return res
+}
+
+func runDeleteRelations(ctx context.Context, session *mcp.ClientSession, project string, tuples []apptype.RelationTuple) StepResult {
+	t0 := time.Now()
+	res := StepResult{Name: "delete_relations"}
+	args := apptype.DeleteRelationsArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: project},
+		Relations:   tuples,
+	}
+	raw, _ := json.Marshal(args)
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "delete_relations", Arguments: json.RawMessage(raw)})
+	if err != nil {
+		res.Success = false
+		res.Error = err.Error()
+	} else {
+		res.Success = true
+	}
+	res.ElapsedMs = elapsedMsSince(t0)
+	return res
+}
+
+func runDeleteObservationsByContents(ctx context.Context, session *mcp.ClientSession, project, entity string, contents []string) StepResult {
+	t0 := time.Now()
+	res := StepResult{Name: "delete_observations"}
+	args := apptype.DeleteObservationsArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: project},
+		EntityName:  entity,
+		Contents:    contents,
+	}
+	raw, _ := json.Marshal(args)
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "delete_observations", Arguments: json.RawMessage(raw)})
+	if err != nil {
+		res.Success = false
+		res.Error = err.Error()
+	} else {
+		res.Success = true
+	}
+	res.ElapsedMs = elapsedMsSince(t0)
+	return res
+}
+
+func runDeleteEntity(ctx context.Context, session *mcp.ClientSession, project, name string) StepResult {
+	t0 := time.Now()
+	res := StepResult{Name: "delete_entity"}
+	args := apptype.DeleteEntityArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: project},
+		Name:        name,
+	}
+	raw, _ := json.Marshal(args)
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "delete_entity", Arguments: json.RawMessage(raw)})
+	if err != nil {
+		res.Success = false
+		res.Error = err.Error()
+	} else {
+		res.Success = true
+	}
+	res.ElapsedMs = elapsedMsSince(t0)
+	return res
+}
+
+func runDeleteEntities(ctx context.Context, session *mcp.ClientSession, project string, names []string) StepResult {
+	t0 := time.Now()
+	res := StepResult{Name: "delete_entities"}
+	args := apptype.DeleteEntitiesArgs{
+		ProjectArgs: apptype.ProjectArgs{ProjectName: project},
+		Names:       names,
+	}
+	raw, _ := json.Marshal(args)
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "delete_entities", Arguments: json.RawMessage(raw)})
 	if err != nil {
 		res.Success = false
 		res.Error = err.Error()
