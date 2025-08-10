@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/ZanzyTHEbar/errbuilder-go v1.5.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

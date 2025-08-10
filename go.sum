@@ -1,3 +1,5 @@
+github.com/ZanzyTHEbar/errbuilder-go v1.5.1 h1:G/oeWXcbSwEz4bdj6T+23VYzb1+/XhHfwj/jAcXpMHY=
+github.com/ZanzyTHEbar/errbuilder-go v1.5.1/go.mod h1:Zrmdx0mbbM7XhaOn7QIDu1AxNj230DiAFGfMOpZdPYg=
 github.com/antlr4-go/antlr/v4 v4.13.0 h1:lxCg3LAv+EUK6t1i0y1V6/SLeUi0eKEKdhQAlS8TVTI=
 github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9UTnmpPaOR2g=
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
