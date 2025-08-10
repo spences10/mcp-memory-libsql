@@ -112,7 +112,8 @@ SSE_ENDPOINT=/sse
 EOF
 ```
 
-> IMPORTANT: `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+> > [!IMPORTANT]
+> `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
 
 #### 4) Run with docker-compose (recommended)
 
@@ -245,7 +246,7 @@ mkdir -p /path/to/projects
 EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim embeddings
 ```
 
-> [!NOTE]\ 
+> [!NOTE]
 > Changing `EMBEDDING_DIMS` for an existing DB requires a manual migration or new DB file.
 
 ## Usage
@@ -290,7 +291,7 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 - Google Vertex AI: `VERTEX_EMBEDDINGS_ENDPOINT`, `VERTEX_ACCESS_TOKEN` (Bearer token). Endpoint format: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict`.
 - LocalAI / llama.cpp (OpenAI-compatible): `LOCALAI_BASE_URL` (default `http://localhost:8080/v1`), `LOCALAI_EMBEDDINGS_MODEL` (default `text-embedding-ada-002`, dims 1536), optional `LOCALAI_API_KEY`.
 
-> [!IMPORTANT]\
+> [!IMPORTANT]
 >  Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
 
 ### Hybrid Search
