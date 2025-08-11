@@ -251,6 +251,63 @@ EMBEDDING_DIMS=1536 ./mcp-memory-libsql-go  # create a fresh DB with 1536-dim em
 
 ## Usage
 
+### Prompts
+
+This server registers MCP prompts to guide knowledge graph operations:
+
+- `quick_start`: Quick guidance for using tools (search, read, edit)
+- `search_nodes_guidance(query, limit?, offset?)`: Compose effective searches with pagination
+- `kg_init_new_repo(repoSlug, areas?, includeIssues?)`: Initialize an optimal KG for a new repository
+- `kg_update_graph(targetNames, replaceObservations?, mergeObservations?, newRelations?, removeRelations?)`: Update entities/relations idempotently
+- `kg_sync_github(tasks, canonicalUrls?)`: Ensure exactly one canonical `GitHub:` observation per `Task:*`
+- `kg_read_best_practices(query, limit?, offset?, expand?, direction?)`: Best-practices layered graph reading
+
+Notes:
+- Prompts return structured descriptions of recommended tool sequences.
+- Follow the recommended order to maintain idempotency and avoid duplicates.
+- Text search gracefully falls back to LIKE when FTS5 is unavailable; vector search falls back when vector_top_k is missing.
+
+### Using Prompts with MCP Clients
+
+#### What prompts are
+- Prompts are named, parameterized templates you can fetch from the server. They return guidance (and example JSON plans) describing which tools to call and with what arguments.
+- Prompts do not execute actions themselves. Your client still calls tools like `create_entities`, `search_nodes`, etc., using the plan returned by the prompt.
+
+#### Workflow
+- List prompts: `ListPrompts`
+- Retrieve a prompt: `GetPrompt(name, arguments)`
+- Parse the returned description for the JSON tool plan and follow it to execute tool calls (via `CallTool`).
+
+#### Minimal Go example
+
+```go
+ctx := context.Background()
+client := mcp.NewClient(&mcp.Implementation{Name: "prompt-client", Version: "dev"}, nil)
+transport := mcp.NewSSEClientTransport("http://localhost:8080/sse", nil)
+session, _ := client.Connect(ctx, transport)
+defer session.Close()
+
+// 1) List available prompts
+plist, _ := session.ListPrompts(ctx, &mcp.ListPromptsParams{})
+for _, p := range plist.Prompts { log.Println("prompt:", p.Name) }
+
+// 2) Retrieve a prompt with arguments (e.g., KG init)
+pr, _ := session.GetPrompt(ctx, &mcp.GetPromptParams{
+  Name: "kg_init_new_repo",
+  Arguments: map[string]any{
+    "repoSlug": "owner/repo",
+    "areas":    []string{"database","server"},
+  },
+})
+log.Println("description:\n", pr.Description) // contains JSON tool plan + Mermaid
+
+// 3) Execute the plan (example create_entities call)
+raw := json.RawMessage(`{"projectArgs":{"projectName":"default"},"entities":[{"name":"Repo: owner/repo","entityType":"Repo","observations":["Primary repository for KG"]}]}`)
+_, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Arguments: raw})
+```
+
+> Tip: Render the prompt description as Markdown to view Mermaid diagrams and copy the embedded JSON plan.
+
 ### Command-line Flags
 
 - `-libsql-url`: Database URL (default: `file:./libsql.db`). Overrides the `LIBSQL_URL` environment variable.

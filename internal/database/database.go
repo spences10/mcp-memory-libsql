@@ -1598,7 +1598,51 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 			q := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND content IN (%s)", placeholders)
 			res, err := tx.ExecContext(ctx, q, args...)
 			if err != nil {
-				return 0, fmt.Errorf("failed to delete observations by content: %w", err)
+				// Fallback: select IDs for the given contents and delete by IDs
+				idsQ := fmt.Sprintf("SELECT id FROM observations WHERE entity_name = ? AND content IN (%s)", placeholders)
+				rows, selErr := tx.QueryContext(ctx, idsQ, args...)
+				if selErr != nil {
+					return 0, fmt.Errorf("failed to select observation ids for content fallback: %w", selErr)
+				}
+				var idChunk []int64
+				for rows.Next() {
+					var id int64
+					if scanErr := rows.Scan(&id); scanErr != nil {
+						rows.Close()
+						return 0, fmt.Errorf("failed to scan observation id: %w", scanErr)
+					}
+					idChunk = append(idChunk, id)
+				}
+				if errRows := rows.Err(); errRows != nil {
+					rows.Close()
+					return 0, fmt.Errorf("error iterating fallback ids: %w", errRows)
+				}
+				rows.Close()
+				if len(idChunk) > 0 {
+					// Build DELETE by id IN
+					idPH := strings.Repeat("?,", len(idChunk))
+					idPH = idPH[:len(idChunk)*2-1] // correct slicing safety; will be trimmed below
+				}
+				// Build args for id delete
+				if len(idChunk) > 0 {
+					idPH := strings.Repeat("?,", len(idChunk))
+					idPH = idPH[:len(idPH)-1]
+					idArgs := make([]interface{}, 0, len(idChunk)+1)
+					idArgs = append(idArgs, entityName)
+					for _, id := range idChunk {
+						idArgs = append(idArgs, id)
+					}
+					delQ := fmt.Sprintf("DELETE FROM observations WHERE entity_name = ? AND id IN (%s)", idPH)
+					delRes, delErr := tx.ExecContext(ctx, delQ, idArgs...)
+					if delErr != nil {
+						return 0, fmt.Errorf("failed to delete observations by id fallback: %w", delErr)
+					}
+					ra, _ := delRes.RowsAffected()
+					total += ra
+					continue
+				}
+				// Nothing selected; proceed without incrementing total
+				continue
 			}
 			ra, _ := res.RowsAffected()
 			total += ra

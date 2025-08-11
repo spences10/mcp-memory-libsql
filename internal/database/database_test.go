@@ -403,3 +403,45 @@ func TestUpdateEntitiesAndRelations(t *testing.T) {
 	}
 	assert.True(t, foundXZ)
 }
+
+func TestDeleteObservationsByContentWithFallback(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Seed entity with multiple observations
+	require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "del-fallback", EntityType: "t", Observations: []string{"oa", "ob", "oc"}},
+	}))
+
+	// Delete by content for one observation; if the direct content-IN path fails
+	// in some environments, the implementation will fall back to delete-by-id.
+	ra, err := db.DeleteObservations(ctx, testProject, "del-fallback", nil, []string{"oa"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), ra)
+
+	e, err := db.GetEntity(ctx, testProject, "del-fallback")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"ob", "oc"}, e.Observations)
+}
+
+func TestUpdateEntitiesReplaceObservations(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Seed entity
+	require.NoError(t, db.CreateEntities(ctx, testProject, []apptype.Entity{
+		{Name: "rpl-1", EntityType: "t", Observations: []string{"o1", "o2"}},
+	}))
+
+	// Replace observations fully
+	err := db.UpdateEntities(ctx, testProject, []apptype.UpdateEntitySpec{
+		{Name: "rpl-1", ReplaceObservations: []string{"only-this"}},
+	})
+	require.NoError(t, err)
+
+	e, err := db.GetEntity(ctx, testProject, "rpl-1")
+	require.NoError(t, err)
+	require.Equal(t, []string{"only-this"}, e.Observations)
+}

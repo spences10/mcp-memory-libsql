@@ -70,6 +70,53 @@ func TestSSEServer_ListTools(t *testing.T) {
 	require.NotEmpty(t, tools.Tools)
 }
 
+func TestSSEServer_ListPrompts(t *testing.T) {
+	cfg := database.NewConfig()
+	cfg.URL = "file:test-e2e-prompts?mode=memory&cache=shared"
+	cfg.EmbeddingDims = 4
+	dbm, err := database.NewDBManager(cfg)
+	require.NoError(t, err)
+	defer dbm.Close()
+
+	srv := NewMCPServer(dbm)
+	port, err := pickFreePort()
+	require.NoError(t, err)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	endpoint := "/sse"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.RunSSE(ctx, addr, endpoint) }()
+	time.Sleep(150 * time.Millisecond)
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "e2e-client", Version: "test"}, nil)
+	transport := mcp.NewSSEClientTransport("http://"+addr+endpoint, nil)
+	session, err := client.Connect(ctx, transport)
+	require.NoError(t, err)
+	defer session.Close()
+
+	// List prompts
+	prompts, err := session.ListPrompts(ctx, &mcp.ListPromptsParams{})
+	require.NoError(t, err)
+	require.NotEmpty(t, prompts.Prompts)
+
+	// Ensure our KG prompts are present
+	want := map[string]bool{
+		"kg_init_new_repo":       false,
+		"kg_update_graph":        false,
+		"kg_sync_github":         false,
+		"kg_read_best_practices": false,
+	}
+	for _, p := range prompts.Prompts {
+		if _, ok := want[p.Name]; ok {
+			want[p.Name] = true
+		}
+	}
+	for name, found := range want {
+		assert.True(t, found, "missing prompt: %s", name)
+	}
+}
+
 func TestSSEServer_ConcurrentClients(t *testing.T) {
 	cfg := database.NewConfig()
 	cfg.URL = "file:test-e2e-concurrent?mode=memory&cache=shared"

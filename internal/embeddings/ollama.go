@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,7 +33,25 @@ func newOllamaFromEnv() Provider {
 		model = "nomic-embed-text"
 	}
 	dims := 768
-	return &ollamaProvider{host: host, model: model, dims: dims, http: &http.Client{Timeout: 15 * time.Second}}
+
+	// Allow configuring HTTP timeout; default to 60s to tolerate cold model loads
+	// OLLAMA_HTTP_TIMEOUT supports Go duration (e.g., "60s") or plain seconds (e.g., "60").
+	timeout := 60 * time.Second
+	if v := strings.TrimSpace(os.Getenv("OLLAMA_HTTP_TIMEOUT")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			timeout = d
+		} else if n, err2 := strconv.Atoi(v); err2 == nil {
+			timeout = time.Duration(n) * time.Second
+		}
+	} else if v := strings.TrimSpace(os.Getenv("EMBEDDINGS_HTTP_TIMEOUT")); v != "" { // compatibility alias
+		if d, err := time.ParseDuration(v); err == nil {
+			timeout = d
+		} else if n, err2 := strconv.Atoi(v); err2 == nil {
+			timeout = time.Duration(n) * time.Second
+		}
+	}
+
+	return &ollamaProvider{host: host, model: model, dims: dims, http: &http.Client{Timeout: timeout}}
 }
 
 func (p *ollamaProvider) Name() string    { return "ollama" }
@@ -45,17 +67,28 @@ func (p *ollamaProvider) Embed(ctx context.Context, inputs []string) ([][]float3
 	if err != nil {
 		return nil, err
 	}
-	// Try /api/embed first
+	// Try /api/embed first with a brief retry on client timeouts (cold model start)
 	embedURL := *base
 	embedURL.Path = path.Join(embedURL.Path, "/api/embed")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, embedURL.String(), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+
+	doPost := func() (*http.Response, error) {
+		req, rerr := http.NewRequestWithContext(ctx, http.MethodPost, embedURL.String(), bytes.NewReader(body))
+		if rerr != nil {
+			return nil, rerr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return p.http.Do(req)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.http.Do(req)
+
+	resp, err := doPost()
 	if err != nil {
-		return nil, err
+		// Retry once on timeout
+		if isTimeout(err) || errors.Is(err, context.DeadlineExceeded) {
+			resp, err = doPost()
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	// If not 200, try legacy endpoint
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
@@ -120,4 +153,16 @@ func (p *ollamaProvider) Embed(ctx context.Context, inputs []string) ([][]float3
 		}
 	}
 	return results, nil
+}
+
+// isTimeout returns true if the error represents a timeout
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	return false
 }

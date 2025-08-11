@@ -15,8 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// TODO: Add Annotations to ALL tools
-// TODO: Add prompts
+// Tool annotations and prompts are registered during server initialization
 
 const defaultProject = "default"
 
@@ -51,7 +50,7 @@ func NewMCPServer(db *database.DBManager) *MCPServer {
 	// initialize metrics from env (no-op if disabled)
 	metrics.InitFromEnv()
 	mcpServer.setupToolHandlers()
-	//mcpServer.setupPrompts()
+	mcpServer.setupPrompts()
 	return mcpServer
 }
 
@@ -158,9 +157,23 @@ func (s *MCPServer) setupToolHandlers() {
 		panic(fmt.Sprintf("failed to create schema for GraphResult (shortest_path): %v", err))
 	}
 
-	createEntitiesAnnotations := mcp.ToolAnnotations{
-		Title: "Create Entities",
-	}
+	createEntitiesAnnotations := mcp.ToolAnnotations{Title: "Create Entities"}
+	searchNodesAnnotations := mcp.ToolAnnotations{Title: "Search Nodes"}
+	readGraphAnnotations := mcp.ToolAnnotations{Title: "Read Graph"}
+	createRelationsAnnotations := mcp.ToolAnnotations{Title: "Create Relations"}
+	deleteEntityAnnotations := mcp.ToolAnnotations{Title: "Delete Entity"}
+	deleteRelationAnnotations := mcp.ToolAnnotations{Title: "Delete Relation"}
+	addObservationsAnnotations := mcp.ToolAnnotations{Title: "Add Observations"}
+	openNodesAnnotations := mcp.ToolAnnotations{Title: "Open Nodes"}
+	deleteEntitiesAnnotations := mcp.ToolAnnotations{Title: "Delete Entities"}
+	deleteRelationsAnnotations := mcp.ToolAnnotations{Title: "Delete Relations"}
+	deleteObservationsAnnotations := mcp.ToolAnnotations{Title: "Delete Observations"}
+	updateEntitiesAnnotations := mcp.ToolAnnotations{Title: "Update Entities"}
+	updateRelationsAnnotations := mcp.ToolAnnotations{Title: "Update Relations"}
+	healthCheckAnnotations := mcp.ToolAnnotations{Title: "Health Check"}
+	neighborsAnnotations := mcp.ToolAnnotations{Title: "Neighbors"}
+	walkAnnotations := mcp.ToolAnnotations{Title: "Graph Walk"}
+	shortestPathAnnotations := mcp.ToolAnnotations{Title: "Shortest Path"}
 
 	mcp.AddTool(s.server, &mcp.Tool{
 		Annotations: &createEntitiesAnnotations,
@@ -171,6 +184,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleCreateEntities)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &searchNodesAnnotations,
 		Name:         "search_nodes",
 		Title:        "Search Nodes",
 		Description:  "Search for entities and their relations using text or vector similarity.",
@@ -179,6 +193,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleSearchNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &readGraphAnnotations,
 		Name:         "read_graph",
 		Title:        "Read Graph",
 		Description:  "Get recent entities and their relations.",
@@ -187,6 +202,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleReadGraph)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &createRelationsAnnotations,
 		Name:        "create_relations",
 		Title:       "Create Relations",
 		Description: "Create relations between entities.",
@@ -194,6 +210,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleCreateRelations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &deleteEntityAnnotations,
 		Name:        "delete_entity",
 		Title:       "Delete Entity",
 		Description: "Delete an entity and all its associated data (observations and relations).",
@@ -201,6 +218,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleDeleteEntity)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &deleteRelationAnnotations,
 		Name:        "delete_relation",
 		Title:       "Delete Relation",
 		Description: "Delete a specific relation between entities.",
@@ -208,6 +226,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleDeleteRelation)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &addObservationsAnnotations,
 		Name:        "add_observations",
 		Title:       "Add Observations",
 		Description: "Append observations to an existing entity.",
@@ -215,6 +234,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleAddObservations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &openNodesAnnotations,
 		Name:         "open_nodes",
 		Title:        "Open Nodes",
 		Description:  "Retrieve entities by names with optional relations.",
@@ -223,18 +243,21 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleOpenNodes)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &deleteEntitiesAnnotations,
 		Name:        "delete_entities",
 		Title:       "Delete Entities",
 		Description: "Delete multiple entities by name.",
 		InputSchema: deleteEntitiesInputSchema,
 	}, s.handleDeleteEntities)
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &deleteRelationsAnnotations,
 		Name:        "delete_relations",
 		Title:       "Delete Relations",
 		Description: "Delete multiple relations.",
 		InputSchema: deleteRelationsInputSchema,
 	}, s.handleDeleteRelations)
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &deleteObservationsAnnotations,
 		Name:        "delete_observations",
 		Title:       "Delete Observations",
 		Description: "Delete observations by id or content for an entity (or all).",
@@ -242,18 +265,21 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleDeleteObservations)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &updateEntitiesAnnotations,
 		Name:        "update_entities",
 		Title:       "Update Entities",
 		Description: "Partially update entities (type/embedding/observations).",
 		InputSchema: updateEntitiesInputSchema,
 	}, s.handleUpdateEntities)
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations: &updateRelationsAnnotations,
 		Name:        "update_relations",
 		Title:       "Update Relations",
 		Description: "Update relation tuples via delete/insert.",
 		InputSchema: updateRelationsInputSchema,
 	}, s.handleUpdateRelations)
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &healthCheckAnnotations,
 		Name:         "health_check",
 		Title:        "Health Check",
 		Description:  "Returns server and configuration information.",
@@ -262,6 +288,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleHealth)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &neighborsAnnotations,
 		Name:         "neighbors",
 		Title:        "Neighbors",
 		Description:  "Fetch 1-hop neighbors for given entities.",
@@ -270,6 +297,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleNeighbors)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &walkAnnotations,
 		Name:         "walk",
 		Title:        "Graph Walk",
 		Description:  "Bounded-depth walk from seed entities.",
@@ -278,6 +306,7 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleWalk)
 
 	mcp.AddTool(s.server, &mcp.Tool{
+		Annotations:  &shortestPathAnnotations,
 		Name:         "shortest_path",
 		Title:        "Shortest Path",
 		Description:  "Compute a shortest path between two entities.",
@@ -286,59 +315,124 @@ func (s *MCPServer) setupToolHandlers() {
 	}, s.handleShortestPath)
 }
 
-/* // setupPrompts registers MCP prompts to guide clients in using this server
+// setupPrompts registers MCP prompts to guide clients in using this server
 func (s *MCPServer) setupPrompts() {
-	// A minimal quick start prompt
+	// Quick start prompt
 	quickStart := &mcp.Prompt{
 		Name:        "quick_start",
 		Description: "Quick start guidance for using memory tools (search, read, and edit graph).",
 	}
 
-	s.server.AddPrompt(s.server, quickStart, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-		msgs := []mcp.PromptMessage{
-			mcp.NewPromptMessage(
-				mcp.RoleAssistant,
-				&mcp.TextContent{Text: "You can use the following tools: search_nodes (text/vector/hybrid), read_graph (recent items), open_nodes, create_entities, create_relations, update_*, delete_* and graph traversal (neighbors, walk, shortest_path). Prefer search_nodes first, then refine with open_nodes and graph tools."},
-			),
-		}
-		return &mcp.GetPromptResult{
-			Description: "Memory quick start",
-			Messages:    msgs,
-		}, nil
+	s.server.AddPrompt(quickStart, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		return &mcp.GetPromptResult{Description: "Memory quick start"}, nil
 	})
 
-	// A parameterized prompt to search nodes
+	// Parameterized search guidance prompt
 	searchPrompt := &mcp.Prompt{
-		Name:        "search_nodes_prompt",
+		Name:        "search_nodes_guidance",
 		Description: "Compose an effective memory search using search_nodes",
-		Arguments: []mcp.PromptArgument{
-			{Name: "query", Description: "Text or vector-like query to search", Required: true},
+		Arguments: []*mcp.PromptArgument{
+			{Name: "query", Description: "Text query to search (string)", Required: true},
 			{Name: "limit", Description: "Max results (default 5)", Required: false},
 			{Name: "offset", Description: "Offset for pagination", Required: false},
 		},
 	}
 
 	s.server.AddPrompt(searchPrompt, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-		q := ""
-		if params != nil && params.Arguments != nil {
-			if v, ok := params.Arguments["query"].(string); ok {
-				q = v
-			}
-		}
-		if q == "" {
-			q = "memory"
-		}
-		text := fmt.Sprintf("Use the search_nodes tool with a concise query: %q. If results are too broad, refine and page with limit/offset. Then use open_nodes or neighbors/walk to explore.", q)
-		msgs := []mcp.PromptMessage{
-			//CreateMessage(mcp.RoleUser, &mcp.TextContent{Text: text}),
-			//s.server.Sessions()
-		}
-		return &mcp.GetPromptResult{
-			Description: "Search guidance",
-			Messages:    msgs,
-		}, nil
+		return &mcp.GetPromptResult{Description: "Search guidance"}, nil
 	})
-} */
+
+	// KG initialization prompt
+	kgInit := &mcp.Prompt{
+		Name:        "kg_init_new_repo",
+		Description: "Initialize an optimal knowledge graph for a new repository (Repo:*, Pattern:*, Decision:*, Task:* scaffolds, idempotent).",
+		Arguments: []*mcp.PromptArgument{
+			{Name: "repoSlug", Description: "owner/repo", Required: true},
+			{Name: "areas", Description: "Array of focus areas (database,server,embeddings,...)", Required: false},
+			{Name: "includeIssues", Description: "Import issues as Task:* with single GitHub link", Required: false},
+		},
+	}
+	s.server.AddPrompt(kgInit, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		desc := "KG Init: create Repo:* and scaffold Pattern:* / Decision:* with tracks/documents relations. Idempotent; do not duplicate names.\n" +
+			"\nJSON plan (example):\n" +
+			"```json\n" +
+			"{\n  \"entities\": [\n    { \"name\": \"Repo: {repoSlug}\", \"entityType\": \"Repo\", \"observations\": [\"Primary repository for KG\"] },\n    { \"name\": \"Pattern: Architecture\", \"entityType\": \"Pattern\", \"observations\": [\"Hexagonal, MCP transports: stdio/SSE\"] }\n  ],\n  \"relations\": [\n    { \"from\": \"Pattern: Architecture\", \"to\": \"Repo: {repoSlug}\", \"relationType\": \"documents\" }\n  ]\n}\n" +
+			"```\n\nFlow:\n" +
+			"```mermaid\nflowchart TD\n  A[\"Input repoSlug, areas\"] --> B{Repo exists?}\n  B -->|yes| C[Open Repo]\n  B -->|no| D[Create Repo]\n  C --> E[Scaffold Pattern/Decision]\n  D --> E\n  E --> F[create_relations]\n  F --> G[(Optional) Import Issues → Task + GitHub link]\n  G --> H[Done]\n```"
+		return &mcp.GetPromptResult{Description: desc}, nil
+	})
+
+	// KG update prompt
+	kgUpdate := &mcp.Prompt{
+		Name:        "kg_update_graph",
+		Description: "Update entities/relations with replace/merge observations, add/remove relations with idempotency and low-cardinality texts.",
+		Arguments: []*mcp.PromptArgument{
+			{Name: "targetNames", Description: "Array of entity names to update", Required: true},
+			{Name: "replaceObservations", Description: "Replace observations (array)", Required: false},
+			{Name: "mergeObservations", Description: "Merge observations (array)", Required: false},
+			{Name: "newRelations", Description: "[{from,to,relationType}]", Required: false},
+			{Name: "removeRelations", Description: "[{from,to,relationType}]", Required: false},
+		},
+	}
+	s.server.AddPrompt(kgUpdate, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		desc := "KG Update: open_nodes → diff → update_entities (replace/merge) → create_relations/delete_relations. Normalize texts; avoid duplicates.\n" +
+			"\nJSON plan (example):\n" +
+			"```json\n" +
+			"{\n  \"updates\": [\n    { \"name\": \"Pattern: Architecture\", \"mergeObservations\": [\"Added SSE keep-alive\"] }\n  ],\n  \"relations\": {\n    \"create\": [ { \"from\": \"Decision: Metrics\", \"to\": \"Repo: {repoSlug}\", \"relationType\": \"documents\" } ],\n    \"delete\": [ { \"from\": \"Old\", \"to\": \"X\", \"relationType\": \"tracks\" } ]\n  }\n}\n" +
+			"```"
+		return &mcp.GetPromptResult{Description: desc}, nil
+	})
+
+	// KG sync GitHub links prompt
+	kgSync := &mcp.Prompt{
+		Name:        "kg_sync_github",
+		Description: "Ensure Task:* nodes have exactly one canonical GitHub link observation; dedupe or add as needed.",
+		Arguments: []*mcp.PromptArgument{
+			{Name: "tasks", Description: "Array of Task:* names", Required: true},
+			{Name: "canonicalUrls", Description: "Array of canonical URLs (optional)", Required: false},
+		},
+	}
+	s.server.AddPrompt(kgSync, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		desc := "KG Sync: open_nodes → delete_observations (all GitHub:) → add_observations(single canonical). If no URL provided, fetch externally then set.\n" +
+			"\nFlow:\n" +
+			"```mermaid\nflowchart TD\n  A[tasks[]] --> B[open_nodes]\n  B --> C{>1 GitHub links?}\n  C -->|yes| D[delete_observations ids]\n  D --> E[add_observations canonical]\n  C -->|no| F{==0?}\n  F -->|yes| E\n  F -->|no| G[Done]\n  E --> G\n```"
+		return &mcp.GetPromptResult{Description: desc}, nil
+	})
+
+	// KG read prompt (best practices)
+	kgRead := &mcp.Prompt{
+		Name:        "kg_read_best_practices",
+		Description: "Read graph with layered strategy: search_nodes → open_nodes → neighbors/walk/shortest_path; paginate and keep ordering stable.",
+		Arguments: []*mcp.PromptArgument{
+			{Name: "query", Description: "Text query", Required: true},
+			{Name: "limit", Description: "Max results (default 5)", Required: false},
+			{Name: "offset", Description: "Offset for pagination", Required: false},
+			{Name: "expand", Description: "none|neighbors|walk|shortest_path", Required: false},
+			{Name: "direction", Description: "out|in|both", Required: false},
+		},
+	}
+	s.server.AddPrompt(kgRead, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		desc := "KG Read: search_nodes (FTS5 or LIKE fallback) → open_nodes(includeRelations=true) → optional neighbors/walk/shortest_path based on expand.\n" +
+			"\nFlow:\n" +
+			"```mermaid\nflowchart TD\n  A[query,limit,offset,expand] --> B[search_nodes]\n  B --> C[open_nodes includeRelations]\n  C --> D{expand?}\n  D -->|neighbors| E[neighbors]\n  D -->|walk| F[walk depth 2]\n  D -->|shortest_path| G[shortest_path]\n  D -->|none| H[return]\n  E --> H\n  F --> H\n  G --> H\n```"
+		return &mcp.GetPromptResult{Description: desc}, nil
+	})
+
+	// Memory operations prompt (user identification + retrieval + update guidance)
+	memOps := &mcp.Prompt{
+		Name:        "kg_memory_ops_guidance",
+		Description: "Operational guidance for memory usage: identify user, retrieve memory, and update KG with new facts.",
+	}
+	s.server.AddPrompt(memOps, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		desc := "Follow these steps per interaction:\n" +
+			"1) Assume user=default_user; if unknown, attempt identification.\n" +
+			"2) Begin with \"Remembering...\" and retrieve context via read/search tools; refer to KG as \"memory\".\n" +
+			"3) Detect new info: identity, behaviors, preferences, goals, relationships.\n" +
+			"4) Update memory: create entities for recurring orgs/people/events; relate to current entities; store facts as observations (idempotently).\n" +
+			"\nRecommended tool sequence:\n- read_graph(limit=10) or search_nodes(query=topic)\n- open_nodes(includeRelations=true) for specifics\n- update_entities (merge/replace observations)\n- create_relations / delete_relations as needed\n"
+		return &mcp.GetPromptResult{Description: desc}, nil
+	})
+}
 
 func (s *MCPServer) getProjectName(providedName string) string {
 	if providedName != "" {
