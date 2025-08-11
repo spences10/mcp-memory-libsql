@@ -112,8 +112,15 @@ SSE_ENDPOINT=/sse
 EOF
 ```
 
+<<<<<<< Updated upstream
 > [!IMPORTANT]
 > `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+||||||| Stash base
+> > [!IMPORTANT]
+> `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+=======
+> > [!IMPORTANT] > `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+>>>>>>> Stashed changes
 
 #### 4) Run with docker-compose (recommended)
 
@@ -144,6 +151,8 @@ EMBEDDINGS_PROVIDER=ollama
 OLLAMA_HOST=http://ollama:11434
 EMBEDDING_DIMS=768
 TRANSPORT=sse
+# Optional: increase timeout to allow cold model load
+OLLAMA_HTTP_TIMEOUT=60s
 EOF
 
 docker compose --profile ollama --profile single up --build -d
@@ -263,6 +272,7 @@ This server registers MCP prompts to guide knowledge graph operations:
 - `kg_read_best_practices(query, limit?, offset?, expand?, direction?)`: Best-practices layered graph reading
 
 Notes:
+
 - Prompts return structured descriptions of recommended tool sequences.
 - Follow the recommended order to maintain idempotency and avoid duplicates.
 - Text search gracefully falls back to LIKE when FTS5 is unavailable; vector search falls back when vector_top_k is missing.
@@ -270,10 +280,12 @@ Notes:
 ### Using Prompts with MCP Clients
 
 #### What prompts are
+
 - Prompts are named, parameterized templates you can fetch from the server. They return guidance (and example JSON plans) describing which tools to call and with what arguments.
 - Prompts do not execute actions themselves. Your client still calls tools like `create_entities`, `search_nodes`, etc., using the plan returned by the prompt.
 
 #### Workflow
+
 - List prompts: `ListPrompts`
 - Retrieve a prompt: `GetPrompt(name, arguments)`
 - Parse the returned description for the JSON tool plan and follow it to execute tool calls (via `CallTool`).
@@ -336,6 +348,7 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
   - `gemini` | `google` | `google-gemini` | `google_genai`
   - `vertexai` | `vertex` | `google-vertex`
   - `localai` | `llamacpp` | `llama.cpp`
+  - `localai` | `llamacpp` | `llama.cpp`
     The server still accepts client-supplied embeddings if unset.
 - Hybrid Search (optional):
   - `HYBRID_SEARCH` (true/1 to enable)
@@ -349,7 +362,7 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
 - LocalAI / llama.cpp (OpenAI-compatible): `LOCALAI_BASE_URL` (default `http://localhost:8080/v1`), `LOCALAI_EMBEDDINGS_MODEL` (default `text-embedding-ada-002`, dims 1536), optional `LOCALAI_API_KEY`.
 
 > [!IMPORTANT]
->  Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
+> Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
 
 ### Hybrid Search
 
@@ -406,6 +419,11 @@ curl -s "$OLLAMA_HOST/api/embed" \
   -d '{"model":"nomic-embed-text","input":["hello","world"]}' \
 | jq '.embeddings[0] | length'
 ```
+
+Notes:
+
+- The entrypoint no longer calls `ollama run` for the embedding model; Ollama will lazily load on first `/api/embed` call.
+- You can tune the client timeout via `OLLAMA_HTTP_TIMEOUT` (e.g. `30s`, `60s`, or integer seconds like `90`).
 
 Gemini (Generative Language API)
 
@@ -483,9 +501,9 @@ The server provides the following MCP tools:
 - `update_entities`: Update entity metadata/embedding and manage observations (merge/replace)
 - `update_relations`: Update relation tuples
 - `health_check`: Return server info and configuration
- - `neighbors`: 1-hop neighbors for given entities (direction out|in|both)
- - `walk`: bounded-depth graph walk from seeds (direction/limit)
- - `shortest_path`: shortest path between two entities
+- `neighbors`: 1-hop neighbors for given entities (direction out|in|both)
+- `walk`: bounded-depth graph walk from seeds (direction/limit)
+- `shortest_path`: shortest path between two entities
 
 ### Tool Summary
 
@@ -525,6 +543,7 @@ histogram_quantile(0.50, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
 histogram_quantile(0.90, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
 histogram_quantile(0.99, sum(rate(tool_call_seconds_bucket[5m])) by (le, tool))
 ```
+
 - If metrics are disabled, a no-op implementation is used.
 
 > We keep this table and examples up to date as the project evolves. If anything is missing or incorrect, please open an issue or PR.
@@ -739,6 +758,7 @@ go test -run=Fuzz -fuzz=Fuzz -fuzztime=2s ./internal/database
 ## Client Integration
 
 This server supports both stdio and SSE transports and can run as:
+
 - a raw binary (local stdio or SSE)
 - a single Docker container (stdio or SSE)
 - a Docker Compose stack (SSE, with multi-project mode and optional embeddings)
@@ -752,10 +772,23 @@ Below are reference integrations for Cursor/Cline and other MCP-ready clients.
   "mcpServers": {
     "memory-db": {
       "autoApprove": [
-        "create_entities","search_nodes","read_graph","create_relations",
-        "delete_entities","delete_relations","delete_entity","delete_relation",
-        "add_observations","open_nodes","delete_observations",
-        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
+        "create_entities",
+        "search_nodes",
+        "read_graph",
+        "create_relations",
+        "delete_entities",
+        "delete_relations",
+        "delete_entity",
+        "delete_relation",
+        "add_observations",
+        "open_nodes",
+        "delete_observations",
+        "update_entities",
+        "update_relations",
+        "health_check",
+        "neighbors",
+        "walk",
+        "shortest_path"
       ],
       "disabled": false,
       "timeout": 60,
@@ -774,10 +807,23 @@ Below are reference integrations for Cursor/Cline and other MCP-ready clients.
   "mcpServers": {
     "multi-project-memory-db": {
       "autoApprove": [
-        "create_entities","search_nodes","read_graph","create_relations",
-        "delete_entities","delete_relations","delete_entity","delete_relation",
-        "add_observations","open_nodes","delete_observations",
-        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
+        "create_entities",
+        "search_nodes",
+        "read_graph",
+        "create_relations",
+        "delete_entities",
+        "delete_relations",
+        "delete_entity",
+        "delete_relation",
+        "add_observations",
+        "open_nodes",
+        "delete_observations",
+        "update_entities",
+        "update_relations",
+        "health_check",
+        "neighbors",
+        "walk",
+        "shortest_path"
       ],
       "disabled": false,
       "timeout": 60,
@@ -807,10 +853,23 @@ Cursor/Cline SSE config:
   "mcpServers": {
     "memory-db": {
       "autoApprove": [
-        "create_entities","search_nodes","read_graph","create_relations",
-        "delete_entities","delete_relations","delete_entity","delete_relation",
-        "add_observations","open_nodes","delete_observations",
-        "update_entities","update_relations","health_check","neighbors","walk","shortest_path"
+        "create_entities",
+        "search_nodes",
+        "read_graph",
+        "create_relations",
+        "delete_entities",
+        "delete_relations",
+        "delete_entity",
+        "delete_relation",
+        "add_observations",
+        "open_nodes",
+        "delete_observations",
+        "update_entities",
+        "update_relations",
+        "health_check",
+        "neighbors",
+        "walk",
+        "shortest_path"
       ],
       "disabled": false,
       "timeout": 60,

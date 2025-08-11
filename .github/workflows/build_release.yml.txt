@@ -1,0 +1,200 @@
+name: CI/CD Pipeline
+description: |
+  This workflow builds and releases the Zephyr Service for multiple platforms.
+  It includes linting, testing, and building.
+on:
+  push:
+    branches:
+      - main
+      - release
+  pull_request:
+    branches:
+      - main
+      - release
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: 'linux'
+
+      - name: Lint code
+        run: |
+          go install golang.org/x/lint/golint@latest
+          golint ./...
+        working-directory: './src'
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: 'linux'
+
+      - name: Test
+        run: go test ./... -v
+        working-directory: './src'
+
+  build-linux:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        goarch: [amd64]
+    outputs:
+      status: ${{ job.status }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: '1.23'
+          working-directory: './src'
+          goos: 'linux'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install semantic-release
+        run: npm install --global semantic-release @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/exec @semantic-release/commit-analyzer @semantic-release/release-notes-generator
+
+      - name: Determine next version
+        run: |
+          npx semantic-release --dry-run > semantic-release-output.txt
+          NEXT_VERSION=$(grep "The next release version is" semantic-release-output.txt | sed 's/.*The next release version is //')
+          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_ENV
+
+      - name: Build Service binary
+        run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LD_FLAGS="-X version.Version=${NEXT_VERSION} -X version.BuildTime=${BUILD_TIME}"
+          BINARY_NAME=zephyr_service_linux_${{ matrix.goarch }}
+          GOOS=linux GOARCH=${{ matrix.goarch }} CGO_ENABLED=1 go build -v -ldflags "${LD_FLAGS}" -o ./bin/linux_${{ matrix.goarch }}/${BINARY_NAME} ./cmd/client.go
+        working-directory: './src'
+
+      - name: Package binary
+        run: |
+          mkdir -p ./dist
+          BINARY_NAME=zephyr_service_linux_${{ matrix.goarch }}
+          zip ./dist/${BINARY_NAME}.zip ./bin/linux_${{ matrix.goarch }}/${BINARY_NAME}
+        working-directory: './src'
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.goarch }}-files
+          path: ./src/dist/*.zip
+
+  build-summary:
+    needs: build-linux
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Build Summary
+        run: |
+          echo "## Build Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| -------- | ------ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | ${{ needs.build-linux.outputs.status || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Build Summary"
+          echo "- Linux build: ${{ needs.build-linux.outputs.status || 'skipped' }}"
+
+  deploy:
+    needs: [build-linux, build-summary]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip ci]')
+    # Allow deploy to run even if some builds fail
+    # Since the 'needs' keyword by default requires all jobs to succeed, we work around this
+    # by using job status outputs and conditions
+    # Reference: https://github.com/orgs/community/discussions/26822
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for commit analysis
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install semantic-release
+        run: npm install --global semantic-release @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/exec @semantic-release/commit-analyzer @semantic-release/release-notes-generator
+
+      - name: Download Linux AMD64 artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: linux-amd64-files
+          path: ./dist
+
+      - name: Download Linux ARM64 artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: linux-arm64-files
+          path: ./dist
+      
+      - name: Check available artifacts
+        id: check-artifacts
+        run: |
+          echo "Found $(ls -la ./dist | wc -l) files in dist directory"
+          if [ "$(ls -A ./dist)" ]; then
+            echo "has_artifacts=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_artifacts=false" >> $GITHUB_OUTPUT
+            echo "No artifacts found for release. Deployment will be skipped."
+          fi
+
+      - name: Release
+        if: steps.check-artifacts.outputs.has_artifacts == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+  cleanup:
+    needs: [build-linux, build-summary, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Linux AMD64 artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: linux-amd64-files
+          failOnError: false
+
+      - name: Cleanup Linux ARM64 artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: linux-arm64-files
+          failOnError: false

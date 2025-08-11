@@ -1,0 +1,41 @@
+name: 'Setup Go'
+description: 'Sets up Go environment and downloads dependencies'
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: '1.23'
+  working-directory:
+    description: 'Working directory for Go commands'
+    required: false
+    default: '.'
+  goos:
+    description: 'Operating system to build for'
+    required: true
+    default: 'linux'
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup build dependencies (Linux only)
+      if: contains(inputs.goos, 'linux')
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential
+      shell: bash
+      
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        # TODO: Add cache for faster builds
+        #cache: 'go'
+        #cache-dependency-name: 'go'
+        #cache-dependency-path: 'go.mod'
+        #cache-dependency-type: 'module'
+        #cache-key: 'go-${{ runner.os }}-${{ hashFiles('go.mod') }}'
+        #cache-restore-keys: 'go-${{ runner.os }}-${{ hashFiles('go.mod') }}'
+      
+    - name: Download Go Dependencies
+      working-directory: ${{ inputs.working-directory }}
+      run: go mod download
+      shell: bash
