@@ -112,7 +112,7 @@ SSE_ENDPOINT=/sse
 EOF
 ```
 
-> > [!IMPORTANT]
+> [!IMPORTANT]
 > `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
 
 #### 4) Run with docker-compose (recommended)
