@@ -112,15 +112,8 @@ SSE_ENDPOINT=/sse
 EOF
 ```
 
-<<<<<<< Updated upstream
 > [!IMPORTANT]
 > `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
-||||||| Stash base
-> > [!IMPORTANT]
-> `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
-=======
-> > [!IMPORTANT] > `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
->>>>>>> Stashed changes
 
 #### 4) Run with docker-compose (recommended)
 
@@ -394,6 +387,7 @@ EMBEDDING_DIMS=1536 \
 | VertexAI | `textembedding-gecko@003` | 768        | 768                  |
 |  LocalAI | `text-embedding-ada-002`  | 1536       | 1536                 |
 
+> ![IMPORTANT]
 > Verify your exact model’s dimensionality with a quick API call (examples below) and set `EMBEDDING_DIMS` accordingly before creating a new DB.
 
 #### Provider quick verification (curl)
