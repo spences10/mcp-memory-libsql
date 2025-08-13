@@ -269,6 +269,27 @@ Notes:
 - Prompts return structured descriptions of recommended tool sequences.
 - Follow the recommended order to maintain idempotency and avoid duplicates.
 - Text search gracefully falls back to LIKE when FTS5 is unavailable; vector search falls back when vector_top_k is missing.
+- Query language highlights for `search_nodes` (text):
+  - FTS first, LIKE fallback; tokenizer includes `:` `-` `_` `@` `.` `/`.
+  - Prefix: append `*` to a token (e.g., `Task:*`). Recommended token length ≥ 2.
+  - Field qualifiers (FTS only): `entity_name:` and `content:` (e.g., `entity_name:"Repo:"* OR content:"P0"`).
+  - Phrases: `"exact phrase"`. Boolean OR supported (space implies AND).
+  - Special: `Task:*` is treated as a prefix on the literal `Task:` token across both entity name and content.
+  - On FTS parse errors (e.g., exotic syntax), the server auto-downgrades to LIKE and normalizes `*` → `%`.
+
+Examples:
+
+```json
+{ "query": "Task:*", "limit": 10 }
+```
+
+```json
+{ "query": "entity_name:\"Repo:\"* OR content:\"P0\"" }
+```
+
+```json
+{ "query": "\"design decision\"", "limit": 5 }
+```
 
 ### Using Prompts with MCP Clients
 

@@ -177,6 +177,31 @@ type DBManager struct {
 	search SearchStrategy
 }
 
+// buildFTSMatchExpr builds a robust MATCH expression for FTS5 that:
+//   - treats trailing '*' as prefix operator
+//   - if the query contains a single token with a trailing ':*' pattern (e.g., "Task:*"),
+//     it rewrites to search both columns for tokens starting with "Task:" using prefix
+//   - otherwise returns the raw query
+func (dm *DBManager) buildFTSMatchExpr(raw string) string {
+	q := strings.TrimSpace(raw)
+	if q == "" {
+		return q
+	}
+	// If looks like Term:* (single token ending with :*)
+	if !strings.ContainsAny(q, " \t\n\r\f\v\u00A0") && strings.HasSuffix(q, ":*") {
+		base := strings.TrimSuffix(q, ":*")
+		base = strings.TrimSpace(base)
+		if base != "" {
+			// Use column-qualified prefix queries on both columns
+			// Quote the token to avoid column lookups (unicode61 tokenchars allows ':')
+			// Example: entity_name:"Task:"* OR content:"Task:"*
+			return fmt.Sprintf("entity_name:\"%s:\"* OR content:\"%s:\"*", base, base)
+		}
+	}
+	// If plain token with '*' suffix, let FTS handle as prefix
+	return q
+}
+
 // capFlags stores capability detection for a specific project/DB handle
 type capFlags struct {
 	checked    bool
@@ -462,6 +487,10 @@ func (dm *DBManager) detectCapabilitiesForProject(ctx context.Context, projectNa
 		caps.fts5 = true
 		// Ensure FTS schema/triggers exist for observations
 		_ = dm.ensureFTSSchema(context.Background(), db)
+		// Verify FTS table exists; if not, disable FTS capability
+		if _, verr := db.ExecContext(context.Background(), "SELECT 1 FROM fts_observations WHERE 1=0"); verr != nil {
+			caps.fts5 = false
+		}
 	} else {
 		caps.fts5 = false
 	}
@@ -472,9 +501,20 @@ func (dm *DBManager) detectCapabilitiesForProject(ctx context.Context, projectNa
 
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported
 func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
-	// Create FTS table and triggers; IF NOT EXISTS makes this idempotent
+	// Recreate FTS table with robust tokenizer and prefix support for queries like "Task:*"
+	// - Include ':' in tokenchars so names like "Task:..." are treated as single tokens
+	// - Enable prefix search for reasonable term lengths
 	stmts := []string{
-		`CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(entity_name, content)`,
+		`DROP TRIGGER IF EXISTS trg_obs_ai`,
+		`DROP TRIGGER IF EXISTS trg_obs_ad`,
+		`DROP TRIGGER IF EXISTS trg_obs_au`,
+		`DROP TABLE IF EXISTS fts_observations`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(
+            entity_name,
+            content,
+            tokenize = 'unicode61 tokenchars=:-_@./',
+            prefix = '2 3 4 5 6 7'
+        )`,
 		`CREATE TRIGGER IF NOT EXISTS trg_obs_ai AFTER INSERT ON observations BEGIN
             INSERT INTO fts_observations(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
         END;`,
@@ -1178,7 +1218,8 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		return nil, fmt.Errorf("search query cannot be empty")
 	}
 
-	searchQuery := fmt.Sprintf("%%%s%%", query)
+	// Prepare LIKE pattern and normalize simple wildcards: treat '*' as SQL '%'
+	likePattern := "%" + strings.ReplaceAll(query, "*", "%") + "%"
 	if limit <= 0 {
 		limit = 5
 	}
@@ -1203,16 +1244,21 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		if err != nil {
 			return nil, err
 		}
-		rows, err = stmt.QueryContext(ctx, query, limit, offset)
+		// Build a tolerant FTS expression that accommodates common syntaxes like "Task:*"
+		expr := dm.buildFTSMatchExpr(query)
+		rows, err = stmt.QueryContext(ctx, expr, limit, offset)
 		if err != nil {
 			low := strings.ToLower(err.Error())
-			if strings.Contains(low, "no such module: fts5") || strings.Contains(low, "malformed MATCH") {
-				// downgrade to LIKE path
+			if strings.Contains(low, "no such module: fts5") {
+				// Disable FTS globally for this project if module is unavailable
 				dm.capMu.Lock()
 				c := dm.capsByProject[projectName]
 				c.fts5 = false
 				dm.capsByProject[projectName] = c
 				dm.capMu.Unlock()
+				useFTS = false
+			} else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
+				// For parse errors, just downgrade this query to LIKE without flipping caps
 				useFTS = false
 			} else {
 				return nil, fmt.Errorf("failed to execute FTS search: %w", err)
@@ -1230,7 +1276,7 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 		if err != nil {
 			return nil, err
 		}
-		rows, err = stmt.QueryContext(ctx, searchQuery, searchQuery, searchQuery, limit, offset)
+		rows, err = stmt.QueryContext(ctx, likePattern, likePattern, likePattern, limit, offset)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute entity search: %w", err)
 		}

@@ -124,7 +124,7 @@ func TestFileDB_CreateAndSearch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Text search path
+	// Text search path (FTS may not be available; LIKE fallback should work)
 	ents, _, err := db.SearchNodes(ctx, testProject, "alpha", 5, 0)
 	require.NoError(t, err)
 	require.Len(t, ents, 1)

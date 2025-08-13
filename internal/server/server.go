@@ -339,7 +339,30 @@ func (s *MCPServer) setupPrompts() {
 	}
 
 	s.server.AddPrompt(searchPrompt, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-		return &mcp.GetPromptResult{Description: "Search guidance"}, nil
+		desc := "Search guidance for search_nodes (text, vector, and hybrid).\n\n" +
+			"Text search (FTS5 → LIKE fallback):\n" +
+			"- Uses FTS5 when available; transparently falls back to SQL LIKE if FTS5 is missing or a query cannot be parsed.\n" +
+			"- Tokenizer includes colon and common symbols: ':' '-' '_' '@' '.' '/' (unicode61).\n" +
+			"- Prefix search: append '*' to a token (e.g., Task:*). Works best for tokens length ≥ 2.\n" +
+			"- Field qualifiers (FTS only): use entity_name: or content: (e.g., entity_name:\"Repo:\"* OR content:\"P0\").\n" +
+			"- Phrases: wrap in double-quotes (e.g., \"design decision\").\n" +
+			"- Boolean: space implies AND; use OR explicitly (e.g., alpha OR beta).\n" +
+			"- Fallback behavior: on FTS parse errors, the server downgrades this query to LIKE, normalizing '*' to '%' and searching name, type, and observations.\n\n" +
+			"Special handling:\n" +
+			"- Task:* is treated as a prefix on the literal token 'Task:' across both entity_name and content.\n\n" +
+			"Vector search: pass a numeric array matching EMBEDDING_DIMS (float32/float64 or numeric strings).\n\n" +
+			"Hybrid search: if HYBRID_SEARCH=true and an embeddings provider is configured, text + vector results are fused using weighted RRF.\n\n" +
+			"Examples (JSON tool args):\n" +
+			"```json\n" +
+			"{ \n  \"query\": \"Task:*\", \"limit\": 10 \n}\n" +
+			"```\n" +
+			"```json\n" +
+			"{ \n  \"query\": \"entity_name:\\\"Repo:\\\"* OR content:\\\"P0\\\"\" \n}\n" +
+			"```\n" +
+			"```json\n" +
+			"{ \n  \"query\": [0.1, 0.2, 0.3, 0.4], \"limit\": 5 \n}\n" +
+			"```\n"
+		return &mcp.GetPromptResult{Description: desc}, nil
 	})
 
 	// KG initialization prompt
@@ -415,6 +438,8 @@ func (s *MCPServer) setupPrompts() {
 		desc := "KG Read: search_nodes (FTS5 or LIKE fallback) → open_nodes(includeRelations=true) → optional neighbors/walk/shortest_path based on expand.\n" +
 			"\nFlow:\n" +
 			"```mermaid\nflowchart TD\n  A[query,limit,offset,expand] --> B[search_nodes]\n  B --> C[open_nodes includeRelations]\n  C --> D{expand?}\n  D -->|neighbors| E[neighbors]\n  D -->|walk| F[walk depth 2]\n  D -->|shortest_path| G[shortest_path]\n  D -->|none| H[return]\n  E --> H\n  F --> H\n  G --> H\n```"
+		// Append quick query tips
+		desc += "\nQuery tips: '*' enables prefix; 'entity_name:'/'content:' qualifiers work with FTS; phrases in quotes; OR supported. 'Task:*' matches tokens starting with 'Task:' across name and content.\n"
 		return &mcp.GetPromptResult{Description: desc}, nil
 	})
 
@@ -498,6 +523,13 @@ func (s *MCPServer) handleSearchNodes(
 		logToolError("search_nodes", projectName, err)
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
+	// Normalize to empty arrays to satisfy JSON Schema (avoid null slices)
+	if entities == nil {
+		entities = []apptype.Entity{}
+	}
+	if relations == nil {
+		relations = []apptype.Relation{}
+	}
 	success = true
 	// Observability: sizes of returned sets
 	metrics.ObserveToolResultSize("search_nodes_entities", len(entities))
@@ -536,6 +568,13 @@ func (s *MCPServer) handleReadGraph(
 		success = false
 		logToolError("read_graph", projectName, err)
 		return nil, fmt.Errorf("read graph failed: %w", err)
+	}
+	// Normalize to empty arrays to satisfy JSON Schema (avoid null slices)
+	if entities == nil {
+		entities = []apptype.Entity{}
+	}
+	if relations == nil {
+		relations = []apptype.Relation{}
 	}
 	success = true
 	metrics.ObserveToolResultSize("read_graph_entities", len(entities))
@@ -715,6 +754,13 @@ func (s *MCPServer) handleOpenNodes(
 			logToolError("open_nodes", projectName, err)
 			return nil, fmt.Errorf("failed to get relations: %w", err)
 		}
+	}
+	// Normalize to empty arrays for schema compliance
+	if entities == nil {
+		entities = []apptype.Entity{}
+	}
+	if relations == nil {
+		relations = []apptype.Relation{}
 	}
 	success = true
 	metrics.ObserveToolResultSize("open_nodes_entities", len(entities))
