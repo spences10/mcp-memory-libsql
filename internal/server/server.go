@@ -348,6 +348,7 @@ func (s *MCPServer) setupPrompts() {
 			"- Phrases: wrap in double-quotes (e.g., \"design decision\").\n" +
 			"- Boolean: space implies AND; use OR explicitly (e.g., alpha OR beta).\n" +
 			"- Fallback behavior: on FTS parse errors, the server downgrades this query to LIKE, normalizing '*' to '%' and searching name, type, and observations.\n\n" +
+			"- Ranking: FTS results are ordered by BM25 if available (env: BM25_ENABLE, BM25_K1, BM25_B); otherwise by name. LIKE fallback preserves current ordering.\n\n" +
 			"Special handling:\n" +
 			"- Task:* is treated as a prefix on the literal token 'Task:' across both entity_name and content.\n\n" +
 			"Vector search: pass a numeric array matching EMBEDDING_DIMS (float32/float64 or numeric strings).\n\n" +

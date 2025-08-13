@@ -276,6 +276,7 @@ Notes:
   - Phrases: `"exact phrase"`. Boolean OR supported (space implies AND).
   - Special: `Task:*` is treated as a prefix on the literal `Task:` token across both entity name and content.
   - On FTS parse errors (e.g., exotic syntax), the server auto-downgrades to LIKE and normalizes `*` → `%`.
+  - Ranking: when FTS is active, results are ranked by BM25 if the function is available; otherwise ordered by `e.name`. BM25 can be disabled or tuned via environment (see below).
 
 Examples:
 
@@ -369,6 +370,11 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
   - `HYBRID_TEXT_WEIGHT` (default 0.4)
   - `HYBRID_VECTOR_WEIGHT` (default 0.6)
   - `HYBRID_RRF_K` (default 60)
+  - Text ranking (BM25 for FTS):
+    - `BM25_ENABLE` (default true). Set to `false` or `0` to disable BM25 ordering.
+    - `BM25_K1` (optional) — saturation parameter. Example `1.2`.
+    - `BM25_B` (optional) — length normalization parameter. Example `0.75`.
+    - If `BM25_K1` and `BM25_B` are both set, the server uses `bm25(table,k1,b)`; otherwise it uses `bm25(table)`.
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`, dims 1536; `-large` dims 3072).
 - Ollama: `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL` (default `nomic-embed-text`, dims 768). Example `OLLAMA_HOST=http://localhost:11434`.
 - Google Gemini (Generative Language API): `GOOGLE_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` (default `text-embedding-004`, dims 768).
@@ -380,12 +386,13 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
 
 ### Hybrid Search
 
-Hybrid Search fuses text results (FTS5 when available, otherwise `LIKE`) with vector similarity using an RRF-style scoring function:
+ Hybrid Search fuses text results (FTS5 when available, otherwise `LIKE`) with vector similarity using an RRF-style scoring function:
 
 - Score = `HYBRID_TEXT_WEIGHT * (1/(k + text_rank)) + HYBRID_VECTOR_WEIGHT * (1/(k + vector_rank))`
 - Defaults: text=0.4, vector=0.6, k=60
 - Requires an embeddings provider to generate a vector for the text query. If unavailable or dims mismatch, hybrid degrades to text-only.
 - If FTS5 is not available, the server falls back to `LIKE` transparently.
+ - When FTS is active, the text-side rank uses BM25 (if available) for higher-quality ordering; otherwise it uses name ordering.
 
 Enable and tune:
 

@@ -1231,67 +1231,81 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 	caps := dm.capsByProject[projectName]
 	dm.capMu.RUnlock()
 	useFTS := caps.fts5
-    var rows *sql.Rows
-    if useFTS {
-        // Prefer BM25 ranking if available or enabled; fallback to simple name ordering
-        bm25Enabled := true
-        if v := os.Getenv("BM25_ENABLE"); strings.EqualFold(v, "false") || v == "0" { bm25Enabled = false }
-        bmK1 := os.Getenv("BM25_K1")
-        bmB := os.Getenv("BM25_B")
-        bmExpr := "bm25(f)"
-        if bm25Enabled && bmK1 != "" && bmB != "" {
-            bmExpr = fmt.Sprintf("bm25(f,%s,%s)", bmK1, bmB)
-        }
-        qftsBase := "SELECT DISTINCT e.name, e.entity_type, e.embedding\n" +
-            "            FROM fts_observations f\n" +
-            "            JOIN observations o ON o.id = f.rowid\n" +
-            "            JOIN entities e ON e.name = o.entity_name\n" +
-            "            WHERE f.fts_observations MATCH ?\n"
-        qftsOrderBM := fmt.Sprintf("%s            ORDER BY %s ASC\n            LIMIT ? OFFSET ?", qftsBase, bmExpr)
-        qftsOrderName := qftsBase + "            ORDER BY e.name ASC\n            LIMIT ? OFFSET ?"
+	var rows *sql.Rows
+	if useFTS {
+		// Prefer BM25 ranking if available or enabled; fallback to simple name ordering
+		bm25Enabled := true
+		if v := os.Getenv("BM25_ENABLE"); strings.EqualFold(v, "false") || v == "0" {
+			bm25Enabled = false
+		}
+		bmK1 := os.Getenv("BM25_K1")
+		bmB := os.Getenv("BM25_B")
+		bmExpr := "bm25(f)"
+		if bm25Enabled && bmK1 != "" && bmB != "" {
+			bmExpr = fmt.Sprintf("bm25(f,%s,%s)", bmK1, bmB)
+		}
+		qftsBase := "SELECT DISTINCT e.name, e.entity_type, e.embedding\n" +
+			"            FROM fts_observations f\n" +
+			"            JOIN observations o ON o.id = f.rowid\n" +
+			"            JOIN entities e ON e.name = o.entity_name\n" +
+			"            WHERE f.fts_observations MATCH ?\n"
+		qftsOrderBM := fmt.Sprintf("%s            ORDER BY %s ASC\n            LIMIT ? OFFSET ?", qftsBase, bmExpr)
+		qftsOrderName := qftsBase + "            ORDER BY e.name ASC\n            LIMIT ? OFFSET ?"
 
-        // Build a tolerant FTS expression that accommodates common syntaxes like "Task:*"
-        expr := dm.buildFTSMatchExpr(query)
+		// Build a tolerant FTS expression that accommodates common syntaxes like "Task:*"
+		expr := dm.buildFTSMatchExpr(query)
 
-        // Try BM25 first if enabled
-        var err error
-        if bm25Enabled {
-            if stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderBM); perr == nil {
-                rows, err = stmt.QueryContext(ctx, expr, limit, offset)
-            } else {
-                err = perr
-            }
-            if err != nil {
-                low := strings.ToLower(err.Error())
-                if strings.Contains(low, "no such function: bm25") || strings.Contains(low, "wrong number of arguments to function bm25") {
-                    // Fall back to name ordering below
-                    err = nil
-                } else if strings.Contains(low, "no such module: fts5") {
-                    dm.capMu.Lock(); c := dm.capsByProject[projectName]; c.fts5 = false; dm.capsByProject[projectName] = c; dm.capMu.Unlock(); useFTS = false
-                } else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
-                    useFTS = false
-                } else {
-                    return nil, fmt.Errorf("failed to execute FTS search: %w", err)
-                }
-            }
-        }
-        // If we didn't obtain rows via BM25 (disabled or fell through), try name ordering
-        if useFTS && rows == nil {
-            stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderName)
-            if perr != nil { return nil, perr }
-            rows, err = stmt.QueryContext(ctx, expr, limit, offset)
-            if err != nil {
-                low := strings.ToLower(err.Error())
-                if strings.Contains(low, "no such module: fts5") {
-                    dm.capMu.Lock(); c := dm.capsByProject[projectName]; c.fts5 = false; dm.capsByProject[projectName] = c; dm.capMu.Unlock(); useFTS = false
-                } else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
-                    useFTS = false
-                } else {
-                    return nil, fmt.Errorf("failed to execute FTS search: %w", err)
-                }
-            }
-        }
-    }
+		// Try BM25 first if enabled
+		var err error
+		if bm25Enabled {
+			if stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderBM); perr == nil {
+				rows, err = stmt.QueryContext(ctx, expr, limit, offset)
+			} else {
+				err = perr
+			}
+			if err != nil {
+				low := strings.ToLower(err.Error())
+				if strings.Contains(low, "no such function: bm25") || strings.Contains(low, "wrong number of arguments to function bm25") {
+					// Fall back to name ordering below
+					err = nil
+				} else if strings.Contains(low, "no such module: fts5") {
+					dm.capMu.Lock()
+					c := dm.capsByProject[projectName]
+					c.fts5 = false
+					dm.capsByProject[projectName] = c
+					dm.capMu.Unlock()
+					useFTS = false
+				} else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
+					useFTS = false
+				} else {
+					return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+				}
+			}
+		}
+		// If we didn't obtain rows via BM25 (disabled or fell through), try name ordering
+		if useFTS && rows == nil {
+			stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderName)
+			if perr != nil {
+				return nil, perr
+			}
+			rows, err = stmt.QueryContext(ctx, expr, limit, offset)
+			if err != nil {
+				low := strings.ToLower(err.Error())
+				if strings.Contains(low, "no such module: fts5") {
+					dm.capMu.Lock()
+					c := dm.capsByProject[projectName]
+					c.fts5 = false
+					dm.capsByProject[projectName] = c
+					dm.capMu.Unlock()
+					useFTS = false
+				} else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
+					useFTS = false
+				} else {
+					return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+				}
+			}
+		}
+	}
 	if !useFTS {
 		const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
             FROM entities e
