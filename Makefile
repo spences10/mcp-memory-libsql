@@ -133,6 +133,7 @@ env-prod:
 	  echo "OLLAMA_HOST=http://ollama:11434"; \
 	  echo "OLLAMA_EMBEDDINGS_MODEL=nomic-embed-text"; \
 	  echo "EMBEDDING_DIMS=768"; \
+	  echo "EMBEDDINGS_ADAPT_MODE=pad_or_truncate"; \
 	  echo; \
 	  echo "HYBRID_SEARCH=true"; \
 	  echo "HYBRID_TEXT_WEIGHT=0.4"; \
@@ -151,12 +152,18 @@ env-prod:
 	  echo "ADDR=:8080"; \
 	  echo "SSE_ENDPOINT=/sse"; \
 	  echo; \
+	  echo "# Multi-project auth toggles"; \
+	  echo "MULTI_PROJECT_AUTH_REQUIRED=false"; \
+	  echo "MULTI_PROJECT_AUTO_INIT_TOKEN=true"; \
+	  echo "MULTI_PROJECT_DEFAULT_TOKEN=dev-token"; \
+	  echo; \
 	  echo "# Optional remote DB settings (leave blank for local files)"; \
 	  echo "LIBSQL_URL="; \
 	  echo "LIBSQL_AUTH_TOKEN="; \
 	} > .env.prod
 
 prod: docker-build data env-prod
+	# Default prod: multi-project SSE, auth off, embeddings=ollama
 	docker compose --env-file .env.prod --profile ollama --profile multi up --build -d
 
 prod-down: env-prod
@@ -167,6 +174,29 @@ prod-logs: env-prod
 
 prod-ps: env-prod
 	docker compose --env-file .env.prod ps
+
+# VoyageAI profile env file
+.PHONY: env-voyage voyage-up voyage-down
+env-voyage:
+	@echo "Writing .env.voyage..."
+	@{ \
+	  echo "EMBEDDINGS_PROVIDER=voyageai"; \
+	  echo "VOYAGEAI_EMBEDDINGS_MODEL=voyage-3-lite"; \
+	  echo "EMBEDDING_DIMS=1024"; \
+	  echo "EMBEDDINGS_ADAPT_MODE=pad_or_truncate"; \
+	  echo "TRANSPORT=sse"; \
+	  echo "ADDR=:8080"; \
+	  echo "SSE_ENDPOINT=/sse"; \
+	  echo "METRICS_PROMETHEUS=true"; \
+	  echo "METRICS_ADDR=:9090"; \
+	  echo "HYBRID_SEARCH=true"; \
+	} > .env.voyage
+
+voyage-up: docker-build data env-voyage
+	docker compose --env-file .env.voyage --profile voyageai up --build -d
+
+voyage-down: env-voyage
+	docker compose --env-file .env.voyage --profile voyageai down $(if $(WITH_VOLUMES),-v,)
 
 # End-to-end docker test workflow
 .PHONY: docker-test

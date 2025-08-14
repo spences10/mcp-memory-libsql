@@ -14,6 +14,7 @@ services:
       # Embeddings
       - EMBEDDING_DIMS=${EMBEDDING_DIMS:-4}
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER}
+      - EMBEDDINGS_ADAPT_MODE=${EMBEDDINGS_ADAPT_MODE}
       # Pooling (optional)
       - DB_MAX_OPEN_CONNS=${DB_MAX_OPEN_CONNS}
       - DB_MAX_IDLE_CONNS=${DB_MAX_IDLE_CONNS}
@@ -31,6 +32,10 @@ services:
       - TRANSPORT=${TRANSPORT:-sse}
       - ADDR=${ADDR:-:8080}
       - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
+      # Multi-project auth toggles
+      - MULTI_PROJECT_AUTH_REQUIRED=${MULTI_PROJECT_AUTH_REQUIRED}
+      - MULTI_PROJECT_AUTO_INIT_TOKEN=${MULTI_PROJECT_AUTO_INIT_TOKEN}
+      - MULTI_PROJECT_DEFAULT_TOKEN=${MULTI_PROJECT_DEFAULT_TOKEN}
       # Provider specifics (all optional; set based on profile)
       - OPENAI_API_KEY
       - OPENAI_EMBEDDINGS_MODEL
@@ -81,6 +86,7 @@ services:
       # Embeddings
       - EMBEDDING_DIMS=${EMBEDDING_DIMS:-4}
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER}
+      - EMBEDDINGS_ADAPT_MODE=${EMBEDDINGS_ADAPT_MODE}
       # Pooling
       - DB_MAX_OPEN_CONNS=${DB_MAX_OPEN_CONNS}
       - DB_MAX_IDLE_CONNS=${DB_MAX_IDLE_CONNS}
@@ -98,6 +104,10 @@ services:
       - TRANSPORT=${TRANSPORT:-sse}
       - ADDR=${ADDR:-:8080}
       - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
+      # Multi-project auth toggles
+      - MULTI_PROJECT_AUTH_REQUIRED=${MULTI_PROJECT_AUTH_REQUIRED}
+      - MULTI_PROJECT_AUTO_INIT_TOKEN=${MULTI_PROJECT_AUTO_INIT_TOKEN}
+      - MULTI_PROJECT_DEFAULT_TOKEN=${MULTI_PROJECT_DEFAULT_TOKEN}
       # Provider specifics
       - OPENAI_API_KEY
       - OPENAI_EMBEDDINGS_MODEL
@@ -130,6 +140,53 @@ services:
         source: ./data
         target: /data
     profiles: ["multi"]
+
+  # Multi-project mode with VoyageAI provider
+  memory-voyage:
+    image: mcp-memory-libsql-go:local
+    environment:
+      # Embeddings (VoyageAI)
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-voyageai}
+      - EMBEDDING_DIMS=${EMBEDDING_DIMS}
+      - EMBEDDINGS_ADAPT_MODE=${EMBEDDINGS_ADAPT_MODE}
+      - VOYAGEAI_API_KEY=${VOYAGEAI_API_KEY}
+      - VOYAGE_API_KEY=${VOYAGE_API_KEY}
+      - VOYAGEAI_EMBEDDINGS_MODEL=${VOYAGEAI_EMBEDDINGS_MODEL:-voyage-3-lite}
+      - VOYAGEAI_EMBEDDINGS_DIMS=${VOYAGEAI_EMBEDDINGS_DIMS}
+      # Transport / Metrics
+      - TRANSPORT=${TRANSPORT:-sse}
+      - ADDR=${ADDR:-:8080}
+      - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
+      - METRICS_PROMETHEUS=${METRICS_PROMETHEUS:-true}
+      - METRICS_ADDR=${METRICS_ADDR:-:9090}
+      # Hybrid (optional)
+      - HYBRID_SEARCH=${HYBRID_SEARCH}
+      - HYBRID_TEXT_WEIGHT=${HYBRID_TEXT_WEIGHT:-0.4}
+      - HYBRID_VECTOR_WEIGHT=${HYBRID_VECTOR_WEIGHT:-0.6}
+      - HYBRID_RRF_K=${HYBRID_RRF_K:-60}
+      # Multi-project auth toggles
+      - MULTI_PROJECT_AUTH_REQUIRED=${MULTI_PROJECT_AUTH_REQUIRED}
+      - MULTI_PROJECT_AUTO_INIT_TOKEN=${MULTI_PROJECT_AUTO_INIT_TOKEN}
+      - MULTI_PROJECT_DEFAULT_TOKEN=${MULTI_PROJECT_DEFAULT_TOKEN}
+    command:
+      [
+        "-transport",
+        "${TRANSPORT:-sse}",
+        "-addr",
+        "${ADDR:-:8080}",
+        "-sse-endpoint",
+        "${SSE_ENDPOINT:-/sse}",
+        "-projects-dir",
+        "/data/projects",
+      ]
+    ports:
+      - "8083:8080"
+      - "9093:9090"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+    profiles: ["voyageai"]
 
   # Optional: Ollama for local embeddings
   ollama:
