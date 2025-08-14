@@ -324,7 +324,13 @@ func (s *MCPServer) setupPrompts() {
 	}
 
 	s.server.AddPrompt(quickStart, func(ctx context.Context, session *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-		return &mcp.GetPromptResult{Description: "Memory quick start"}, nil
+		desc := "Memory quick start. Key points:" +
+			"\n- Each database fixes its embedding size at creation (F32_BLOB(N))." +
+			"\n- On startup, the server detects the DB’s size and adapts provider outputs to match (padding/truncation)." +
+			"\n- You can switch providers/models without recreating the DB; query vectors must still match the DB’s size exactly." +
+			"\n- See health_check for current EmbeddingDims." +
+			"\n- Optional env EMBEDDINGS_ADAPT_MODE: pad_or_truncate (default) | pad | truncate."
+		return &mcp.GetPromptResult{Description: desc}, nil
 	})
 
 	// Parameterized search guidance prompt
@@ -351,8 +357,10 @@ func (s *MCPServer) setupPrompts() {
 			"- Ranking: FTS results are ordered by BM25 if available (env: BM25_ENABLE, BM25_K1, BM25_B); otherwise by name. LIKE fallback preserves current ordering.\n\n" +
 			"Special handling:\n" +
 			"- Task:* is treated as a prefix on the literal token 'Task:' across both entity_name and content.\n\n" +
-			"Vector search: pass a numeric array matching EMBEDDING_DIMS (float32/float64 or numeric strings).\n\n" +
+			"Vector search: pass a numeric array matching the database embedding size (see health_check).\n" +
+			"Provider outputs are adapted automatically, but query vectors must match the DB’s size exactly).\n\n" +
 			"Hybrid search: if HYBRID_SEARCH=true and an embeddings provider is configured, text + vector results are fused using weighted RRF.\n\n" +
+			"Multi-project mode: include projectArgs.projectName and projectArgs.authToken in every tool call; the server will reject requests without them.\n\n" +
 			"Examples (JSON tool args):\n" +
 			"```json\n" +
 			"{ \n  \"query\": \"Task:*\", \"limit\": 10 \n}\n" +
@@ -464,6 +472,10 @@ func (s *MCPServer) getProjectName(providedName string) string {
 	if providedName != "" {
 		return providedName
 	}
+	// In multi-project mode, the project must be provided explicitly
+	if s.db != nil && s.db.Config().MultiProjectMode {
+		return ""
+	}
 	return defaultProject
 }
 
@@ -477,6 +489,14 @@ func (s *MCPServer) handleCreateEntities(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	entities := params.Arguments.Entities
 
 	if err := s.db.CreateEntities(ctx, projectName, entities); err != nil {
@@ -508,6 +528,14 @@ func (s *MCPServer) handleSearchNodes(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	query := params.Arguments.Query
 	limit := params.Arguments.Limit
 	offset := params.Arguments.Offset
@@ -560,6 +588,14 @@ func (s *MCPServer) handleReadGraph(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	limit := params.Arguments.Limit
 	if limit <= 0 {
 		limit = 10
@@ -605,6 +641,14 @@ func (s *MCPServer) handleCreateRelations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	relations := params.Arguments.Relations
 
 	internalRelations := make([]apptype.Relation, len(relations))
@@ -644,6 +688,14 @@ func (s *MCPServer) handleDeleteEntity(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	name := params.Arguments.Name
 
 	if err := s.db.DeleteEntity(ctx, projectName, name); err != nil {
@@ -673,6 +725,14 @@ func (s *MCPServer) handleDeleteRelation(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	source := params.Arguments.Source
 	target := params.Arguments.Target
 	relationType := params.Arguments.Type
@@ -704,6 +764,14 @@ func (s *MCPServer) handleAddObservations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	entityName := params.Arguments.EntityName
 	observations := params.Arguments.Observations
 
@@ -738,6 +806,14 @@ func (s *MCPServer) handleOpenNodes(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	names := params.Arguments.Names
 	include := params.Arguments.IncludeRelations
 
@@ -784,6 +860,14 @@ func (s *MCPServer) handleDeleteEntities(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	names := params.Arguments.Names
 	if err := s.db.DeleteEntities(ctx, projectName, names); err != nil {
 		success = false
@@ -807,6 +891,14 @@ func (s *MCPServer) handleDeleteRelations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	tuples := make([]apptype.Relation, len(params.Arguments.Relations))
 	for i, r := range params.Arguments.Relations {
 		tuples[i] = apptype.Relation(r)
@@ -833,6 +925,14 @@ func (s *MCPServer) handleDeleteObservations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	entity := params.Arguments.EntityName
 	ids := params.Arguments.IDs
 	contents := params.Arguments.Contents
@@ -859,6 +959,14 @@ func (s *MCPServer) handleUpdateEntities(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	if err := s.db.UpdateEntities(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
 		logToolError("update_entities", projectName, err)
@@ -881,6 +989,14 @@ func (s *MCPServer) handleUpdateRelations(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	if err := s.db.UpdateRelations(ctx, projectName, params.Arguments.Updates); err != nil {
 		success = false
 		logToolError("update_relations", projectName, err)
@@ -929,6 +1045,14 @@ func (s *MCPServer) handleNeighbors(
 	var success bool
 	defer func() { done(success) }()
 	projectName := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && projectName == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(projectName, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	names := params.Arguments.Names
 	direction := params.Arguments.Direction
 	limit := params.Arguments.Limit
@@ -954,6 +1078,14 @@ func (s *MCPServer) handleWalk(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && p == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(p, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	ents, rels, err := s.db.Walk(ctx, p, params.Arguments.Names, params.Arguments.MaxDepth, params.Arguments.Direction, params.Arguments.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("walk failed: %w", err)
@@ -976,6 +1108,14 @@ func (s *MCPServer) handleShortestPath(
 	var success bool
 	defer func() { done(success) }()
 	p := s.getProjectName(params.Arguments.ProjectArgs.ProjectName)
+	if s.db.Config().MultiProjectMode && p == "" {
+		return nil, fmt.Errorf("projectArgs.projectName is required in multi-project mode")
+	}
+	if s.db.Config().MultiProjectMode {
+		if err := s.db.ValidateProjectAuth(p, params.Arguments.ProjectArgs.AuthToken); err != nil {
+			return nil, fmt.Errorf("authorization failed: %w", err)
+		}
+	}
 	ents, rels, err := s.db.ShortestPath(ctx, p, params.Arguments.From, params.Arguments.To, params.Arguments.Direction)
 	if err != nil {
 		return nil, fmt.Errorf("shortest_path failed: %w", err)

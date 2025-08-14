@@ -2,7 +2,8 @@ package apptype
 
 // ProjectArgs provides a standard way to pass project context to tools.
 type ProjectArgs struct {
-	ProjectName string `json:"projectName,omitempty" jsonschema:"The name of the project to operate on. If not provided, the default project is used."`
+	ProjectName string `json:"projectName,omitempty" jsonschema:"The name of the project to operate on. REQUIRED in multi-project mode."`
+	AuthToken   string `json:"authToken,omitempty" jsonschema:"Per-project auth token. REQUIRED in multi-project mode to authorize access to the project database."`
 }
 
 // CreateEntitiesArgs represents the arguments for the create_entities tool
