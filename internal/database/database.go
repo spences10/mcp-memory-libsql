@@ -984,22 +984,52 @@ func (dm *DBManager) UpdateRelations(ctx context.Context, projectName string, up
 	}
 	defer tx.Rollback()
 	for _, up := range updates {
+		// Compute new endpoints and relation type; trim inputs
+		nf := strings.TrimSpace(up.NewFrom)
+		if nf == "" {
+			nf = strings.TrimSpace(up.From)
+		}
+		nt := strings.TrimSpace(up.NewTo)
+		if nt == "" {
+			nt = strings.TrimSpace(up.To)
+		}
+		nr := strings.TrimSpace(up.NewRelationType)
+		if nr == "" {
+			nr = strings.TrimSpace(up.RelationType)
+		}
+		if nf == "" || nt == "" || nr == "" {
+			return fmt.Errorf("relation endpoints and type cannot be empty")
+		}
+
+		// Pre-check that both endpoints exist to avoid FK failures; clearer error message
+		rows, qerr := tx.QueryContext(ctx, "SELECT name FROM entities WHERE name IN (?, ?)", nf, nt)
+		if qerr != nil {
+			return fmt.Errorf("failed to verify relation endpoints: %w", qerr)
+		}
+		found := make(map[string]bool, 2)
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err == nil {
+				found[name] = true
+			}
+		}
+		rows.Close()
+		missing := make([]string, 0, 2)
+		if !found[nf] {
+			missing = append(missing, nf)
+		}
+		if !found[nt] {
+			missing = append(missing, nt)
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("relation endpoints must exist before linking: missing %s", strings.Join(missing, ", "))
+		}
+
 		// delete old tuple
 		if _, err := tx.ExecContext(ctx, "DELETE FROM relations WHERE source = ? AND target = ? AND relation_type = ?", up.From, up.To, up.RelationType); err != nil {
 			return fmt.Errorf("failed to delete old relation: %w", err)
 		}
-		nf := up.NewFrom
-		if nf == "" {
-			nf = up.From
-		}
-		nt := up.NewTo
-		if nt == "" {
-			nt = up.To
-		}
-		nr := up.NewRelationType
-		if nr == "" {
-			nr = up.RelationType
-		}
+		// insert new tuple
 		if _, err := tx.ExecContext(ctx, "INSERT INTO relations (source, target, relation_type) VALUES (?, ?, ?)", nf, nt, nr); err != nil {
 			return fmt.Errorf("failed to insert new relation: %w", err)
 		}
@@ -1821,7 +1851,7 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 					return 0, fmt.Errorf("error iterating fallback ids: %w", errRows)
 				}
 				rows.Close()
-                // Build args for id delete
+				// Build args for id delete
 				if len(idChunk) > 0 {
 					idPH := strings.Repeat("?,", len(idChunk))
 					idPH = idPH[:len(idPH)-1]
