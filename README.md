@@ -94,7 +94,7 @@ mkdir -p ./data
 
 #### 3) Choose an embeddings provider (optional but recommended)
 
-Set `EMBEDDINGS_PROVIDER` and provider-specific variables. Also set `EMBEDDING_DIMS` to match your model. Common mappings are listed below in this README.
+Set `EMBEDDINGS_PROVIDER` and provider-specific variables. For new databases, set `EMBEDDING_DIMS` to the desired embedding dimensionality. For existing databases, the server automatically detects the current DB dimensionality and adapts provider output vectors to match it (see “Embedding Dimensions” below). Common mappings are listed later in this README.
 
 You can create a `.env` file for Compose or export env vars directly. Example `.env` for OpenAI:
 
@@ -113,7 +113,7 @@ EOF
 ```
 
 > [!IMPORTANT]
-> `EMBEDDING_DIMS` must match the chosen model’s dimension. Create a fresh DB if you change it.
+> Each database fixes its embedding size at creation (`F32_BLOB(N)`). The server now (1) detects the DB’s current size at startup and (2) automatically adapts provider outputs via padding/truncation so you can change provider/model without migrating the DB. To change the actual stored size, create a new DB (or run a manual migration) with a different `EMBEDDING_DIMS`.
 
 #### 4) Run with docker-compose (recommended)
 
@@ -172,6 +172,12 @@ docker compose --profile multi up --build -d
 # exposes on 8081/9091 by default per compose file
 ```
 
+When Multi-Project Mode is enabled:
+
+- All tool calls MUST include `projectArgs.projectName`.
+- Per-project auth: include `projectArgs.authToken`. On first use, the token is persisted at `<ProjectsDir>/<projectName>/.auth_token` (0600). Subsequent calls must present the same token.
+- Calls without `projectName` or with invalid tokens are rejected. You can relax this by setting `MULTI_PROJECT_AUTH_REQUIRED=false` (see below). You can also enable automatic token initialization with `MULTI_PROJECT_AUTO_INIT_TOKEN=true` and optionally provide `MULTI_PROJECT_DEFAULT_TOKEN`.
+
 Health and metrics:
 
 ```bash
@@ -207,7 +213,7 @@ export LIBSQL_AUTH_TOKEN=your-token
 docker compose --profile single up --build -d
 ```
 
-If you later change `EMBEDDING_DIMS` for an existing DB, create a new DB file or run a manual migration to match the new dimensionality.
+If you later change `EMBEDDING_DIMS`, it will not alter an existing DB’s schema. The server will continue to adopt the DB’s actual size. To change sizes, create a new DB or migrate.
 
 #### Example (Go) SSE client
 
@@ -350,7 +356,12 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
   - Local file: `file:./path/to/db.sqlite`
   - Remote libSQL: `libsql://your-db.turso.io`
 - `LIBSQL_AUTH_TOKEN`: Authentication token for remote databases
-- `EMBEDDING_DIMS`: Embedding dimension (default: `4`). Affects schema and vector operations.
+- `EMBEDDING_DIMS`: Embedding dimension for new databases (default: `4`). Existing DBs are auto-detected and take precedence at runtime.
+- `EMBEDDINGS_ADAPT_MODE`: How to adapt provider vectors to the DB size: `pad_or_truncate` (default) | `pad` | `truncate`.
+- `PROJECTS_DIR`: Base directory for multi-project mode (can also be set via flag `-projects-dir`).
+- `MULTI_PROJECT_AUTH_REQUIRED`: Set to `false`/`0` to disable per-project auth enforcement (default: required).
+- `MULTI_PROJECT_AUTO_INIT_TOKEN`: Set to `true`/`1` to auto-create a token file on first access when none exists; the first call will fail with an instruction to retry with the token.
+- `MULTI_PROJECT_DEFAULT_TOKEN`: Optional token value used when auto-initializing; if omitted, a random token is generated.
 - `DB_MAX_OPEN_CONNS`: Max open DB connections (optional)
 - `DB_MAX_IDLE_CONNS`: Max idle DB connections (optional)
 - `DB_CONN_MAX_IDLE_SEC`: Connection max idle time in seconds (optional)
@@ -363,7 +374,7 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
   - `gemini` | `google` | `google-gemini` | `google_genai`
   - `vertexai` | `vertex` | `google-vertex`
   - `localai` | `llamacpp` | `llama.cpp`
-  - `localai` | `llamacpp` | `llama.cpp`
+  - `voyageai` | `voyage` | `voyage-ai`
     The server still accepts client-supplied embeddings if unset.
 - Hybrid Search (optional):
   - `HYBRID_SEARCH` (true/1 to enable)
@@ -375,24 +386,25 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
     - `BM25_K1` (optional) — saturation parameter. Example `1.2`.
     - `BM25_B` (optional) — length normalization parameter. Example `0.75`.
     - If `BM25_K1` and `BM25_B` are both set, the server uses `bm25(table,k1,b)`; otherwise it uses `bm25(table)`.
-- OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`, dims 1536; `-large` dims 3072).
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_EMBEDDINGS_MODEL` (default `text-embedding-3-small`).
 - Ollama: `OLLAMA_HOST`, `OLLAMA_EMBEDDINGS_MODEL` (default `nomic-embed-text`, dims 768). Example `OLLAMA_HOST=http://localhost:11434`.
 - Google Gemini (Generative Language API): `GOOGLE_API_KEY`, `GEMINI_EMBEDDINGS_MODEL` (default `text-embedding-004`, dims 768).
 - Google Vertex AI: `VERTEX_EMBEDDINGS_ENDPOINT`, `VERTEX_ACCESS_TOKEN` (Bearer token). Endpoint format: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict`.
 - LocalAI / llama.cpp (OpenAI-compatible): `LOCALAI_BASE_URL` (default `http://localhost:8080/v1`), `LOCALAI_EMBEDDINGS_MODEL` (default `text-embedding-ada-002`, dims 1536), optional `LOCALAI_API_KEY`.
+- VoyageAI: `VOYAGEAI_API_KEY` (or `VOYAGE_API_KEY`), `VOYAGEAI_EMBEDDINGS_MODEL` (default `voyage-3-lite`). Optional `VOYAGEAI_EMBEDDINGS_DIMS` to explicitly set expected output length if you need to override.
 
 > [!IMPORTANT]
-> Ensure `EMBEDDING_DIMS` matches your provider's embedding dimensionality. If they differ, the server returns an `EMBEDDING_DIMS_MISMATCH` error. Create a fresh DB when changing `EMBEDDING_DIMS`.
+> Provider outputs are automatically adapted to the DB’s fixed embedding size (padding/truncation). This allows switching providers/models without recreating the DB. Your client-supplied vector queries must still be exactly the DB size. Use the `health_check` tool to see the current `EmbeddingDims`.
 
 ### Hybrid Search
 
- Hybrid Search fuses text results (FTS5 when available, otherwise `LIKE`) with vector similarity using an RRF-style scoring function:
+Hybrid Search fuses text results (FTS5 when available, otherwise `LIKE`) with vector similarity using an RRF-style scoring function:
 
 - Score = `HYBRID_TEXT_WEIGHT * (1/(k + text_rank)) + HYBRID_VECTOR_WEIGHT * (1/(k + vector_rank))`
 - Defaults: text=0.4, vector=0.6, k=60
 - Requires an embeddings provider to generate a vector for the text query. If unavailable or dims mismatch, hybrid degrades to text-only.
 - If FTS5 is not available, the server falls back to `LIKE` transparently.
- - When FTS is active, the text-side rank uses BM25 (if available) for higher-quality ordering; otherwise it uses name ordering.
+- When FTS is active, the text-side rank uses BM25 (if available) for higher-quality ordering; otherwise it uses name ordering.
 
 Enable and tune:
 
@@ -406,19 +418,20 @@ EMBEDDING_DIMS=1536 \
 
 #### Common model → EMBEDDING_DIMS mapping
 
-| Provider | Model                     | Dimensions | Set `EMBEDDING_DIMS` |
-| -------: | ------------------------- | ---------- | -------------------- |
-|   OpenAI | `text-embedding-3-small`  | 1536       | 1536                 |
-|   OpenAI | `text-embedding-3-large`  | 3072       | 3072                 |
-|   Ollama | `nomic-embed-text`        | 768        | 768                  |
-|   Gemini | `text-embedding-004`      | 768        | 768                  |
-| VertexAI | `textembedding-gecko@003` | 768        | 768                  |
-|  LocalAI | `text-embedding-ada-002`  | 1536       | 1536                 |
+| Provider | Model                     | Dimensions | Set `EMBEDDING_DIMS`  |
+| -------: | ------------------------- | ---------- | --------------------- |
+|   OpenAI | `text-embedding-3-small`  | 1536       | 1536                  |
+|   OpenAI | `text-embedding-3-large`  | 3072       | 3072                  |
+|   Ollama | `nomic-embed-text`        | 768        | 768                   |
+|   Gemini | `text-embedding-004`      | 768        | 768                   |
+| VertexAI | `textembedding-gecko@003` | 768        | 768                   |
+|  LocalAI | `text-embedding-ada-002`  | 1536       | 1536                  |
+| VoyageAI | `voyage-3-*`              | varies     | Set once at DB create |
 
 > ![IMPORTANT]
 > Verify your exact model’s dimensionality with a quick API call (examples below) and set `EMBEDDING_DIMS` accordingly before creating a new DB.
 
-#### Provider quick verification (curl)
+#### Provider quick verification (curl / Go)
 
 These calls help you confirm the embedding vector length (dimension) for your chosen model.
 
@@ -473,6 +486,20 @@ curl -s "$ENDPOINT" \
 ```
 
 LocalAI (OpenAI-compatible)
+VoyageAI (Go SDK)
+
+```go
+package main
+import (
+  "fmt"
+  voyageai "github.com/austinfhunter/voyageai"
+)
+func main() {
+  vo := voyageai.NewClient(&voyageai.VoyageClientOpts{Key: os.Getenv("VOYAGEAI_API_KEY")})
+  resp, _ := vo.Embed([]string{"hello"}, "voyage-3-lite", nil)
+  fmt.Println(len(resp.Data[0].Embedding)) // vector length
+}
+```
 
 ```bash
 curl -s "$LOCALAI_BASE_URL/embeddings" \
@@ -746,7 +773,7 @@ Vector search input: The server accepts vector queries as JSON arrays (e.g., `[0
 
 ### Embedding Dimensions
 
-The embedding column type is created as `F32_BLOB(N)`, where `N` comes from `EMBEDDING_DIMS` (default 4). If you change `EMBEDDING_DIMS` for an existing database file, you should create a new database or run a manual migration, as automatic dimensionality migration is not performed.
+The embedding column is `F32_BLOB(N)`, fixed per database. On startup, the server detects the DB’s `N` and sets runtime behavior accordingly, adapting provider outputs via padding/truncation. Changing `EMBEDDING_DIMS` does not modify an existing DB; to change `N`, create a new DB (or migrate). Use the `health_check` tool to view the active `EmbeddingDims`.
 
 ### Transports: stdio and SSE
 
