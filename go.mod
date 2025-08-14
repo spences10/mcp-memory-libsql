@@ -3,6 +3,7 @@ module github.com/ZanzyTHEbar/mcp-memory-libsql-go
 go 1.24.3
 
 require (
+	github.com/austinfhunter/voyageai v1.1.2
 	github.com/modelcontextprotocol/go-sdk v0.2.0
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.10.0
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	github.com/ZanzyTHEbar/errbuilder-go v1.5.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

@@ -3,6 +3,7 @@ package embeddings
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -41,33 +42,53 @@ func (s *StaticProvider) Embed(ctx context.Context, inputs []string) ([][]float3
 // EMBEDDINGS_PROVIDER: "openai", "ollama", "gemini", "vertexai", "localai", or empty for disabled.
 func NewFromEnv() Provider {
 	name := strings.ToLower(strings.TrimSpace(os.Getenv("EMBEDDINGS_PROVIDER")))
+	targetDims := 0
+	if v := strings.TrimSpace(os.Getenv("EMBEDDING_DIMS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			targetDims = n
+		}
+	}
+	// optional policy for size adaptation
+	adaptMode := strings.TrimSpace(os.Getenv("EMBEDDINGS_ADAPT_MODE")) // "pad_or_truncate" | "truncate" | "pad"
 	switch name {
 	case "openai":
 		if p := newOpenAIFromEnv(); p != nil {
-			return p
+			return maybeWrap(p, targetDims, adaptMode)
 		}
 		return nil
 	case "ollama":
 		if p := newOllamaFromEnv(); p != nil {
-			return p
+			return maybeWrap(p, targetDims, adaptMode)
 		}
 		return nil
 	case "gemini", "google-gemini", "google_genai", "google":
 		if p := newGeminiFromEnv(); p != nil {
-			return p
+			return maybeWrap(p, targetDims, adaptMode)
 		}
 		return nil
 	case "vertex", "vertexai", "google-vertex":
 		if p := newVertexFromEnv(); p != nil {
-			return p
+			return maybeWrap(p, targetDims, adaptMode)
 		}
 		return nil
 	case "localai", "llamacpp", "llama.cpp":
 		if p := newLocalAIFromEnv(); p != nil {
-			return p
+			return maybeWrap(p, targetDims, adaptMode)
+		}
+		return nil
+	case "voyage", "voyageai", "voyage-ai":
+		if p := newVoyageFromEnv(); p != nil {
+			return maybeWrap(p, targetDims, adaptMode)
 		}
 		return nil
 	default:
 		return nil
 	}
+}
+
+func maybeWrap(p Provider, targetDims int, mode string) Provider {
+	if targetDims <= 0 || p == nil || p.Dimensions() == targetDims {
+		return p
+	}
+	return WrapToDims(p, targetDims, mode)
 }
