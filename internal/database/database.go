@@ -1821,12 +1821,7 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 					return 0, fmt.Errorf("error iterating fallback ids: %w", errRows)
 				}
 				rows.Close()
-				if len(idChunk) > 0 {
-					// Build DELETE by id IN
-					idPH := strings.Repeat("?,", len(idChunk))
-					idPH = idPH[:len(idChunk)*2-1] // correct slicing safety; will be trimmed below
-				}
-				// Build args for id delete
+                // Build args for id delete
 				if len(idChunk) > 0 {
 					idPH := strings.Repeat("?,", len(idChunk))
 					idPH = idPH[:len(idPH)-1]
