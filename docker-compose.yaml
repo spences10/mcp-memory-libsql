@@ -1,0 +1,99 @@
+services:
+  # Unified memory service: single|multi|voyageai modes driven by MODE env var
+  memory:
+    image: mcp-memory-libsql-go:local
+    build:
+      context: .
+      args:
+        - VERSION=${VERSION:-dev}
+        - REVISION=${REVISION:-dev}
+        - BUILD_DATE=${BUILD_DATE}
+    environment:
+      # Core DB
+      - LIBSQL_URL=${LIBSQL_URL:-file:/data/libsql.db}
+      - LIBSQL_AUTH_TOKEN=${LIBSQL_AUTH_TOKEN}
+      # Embeddings
+      - EMBEDDING_DIMS=${EMBEDDING_DIMS:-4}
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER}
+      - EMBEDDINGS_ADAPT_MODE=${EMBEDDINGS_ADAPT_MODE}
+      # Pooling (optional)
+      - DB_MAX_OPEN_CONNS=${DB_MAX_OPEN_CONNS}
+      - DB_MAX_IDLE_CONNS=${DB_MAX_IDLE_CONNS}
+      - DB_CONN_MAX_IDLE_SEC=${DB_CONN_MAX_IDLE_SEC}
+      - DB_CONN_MAX_LIFETIME_SEC=${DB_CONN_MAX_LIFETIME_SEC}
+      # Hybrid (optional)
+      - HYBRID_SEARCH=${HYBRID_SEARCH}
+      - HYBRID_TEXT_WEIGHT=${HYBRID_TEXT_WEIGHT:-0.4}
+      - HYBRID_VECTOR_WEIGHT=${HYBRID_VECTOR_WEIGHT:-0.6}
+      - HYBRID_RRF_K=${HYBRID_RRF_K:-60}
+      # Metrics
+      - METRICS_PROMETHEUS=${METRICS_PROMETHEUS:-true}
+      - METRICS_PORT=${METRICS_PORT:-9090}
+      # Transport / main address (container listens on PORT, host maps via ports below)
+      - TRANSPORT=${TRANSPORT:-sse}
+      - PORT=${PORT:-8080}
+      - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
+      # Multi-project auth toggles
+      - MULTI_PROJECT_AUTH_REQUIRED=${MULTI_PROJECT_AUTH_REQUIRED}
+      - MULTI_PROJECT_AUTO_INIT_TOKEN=${MULTI_PROJECT_AUTO_INIT_TOKEN}
+      - MULTI_PROJECT_DEFAULT_TOKEN=${MULTI_PROJECT_DEFAULT_TOKEN}
+      # Runtime mode and misc
+      - MODE=${MODE:-single} # single | multi | voyageai
+      - PROJECTS_DIR=${PROJECTS_DIR:-/data/projects}
+    # Command will be resolved by entrypoint; fall back to default args for compatibility
+    command:
+      [
+        "-transport",
+        "${TRANSPORT:-sse}",
+        "-addr",
+        ":${PORT:-8080}",
+        "-sse-endpoint",
+        "${SSE_ENDPOINT:-/sse}",
+      ]
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+      - "${METRICS_PORT:-9090}:${METRICS_PORT:-9090}"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: true
+    healthcheck:
+      test: >
+        CMD-SHELL
+        curl -fsS http://127.0.0.1:${METRICS_PORT:-9090}/healthz ||
+        pgrep -x mcp-memory-libsql-go >/dev/null
+      interval: 5s
+      timeout: 5s
+      start_period: 5s
+      retries: 30
+    profiles: ["memory"]
+
+  # Optional: Ollama for local embeddings
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - type: bind
+        source: ./ollama_models
+        target: /root/.ollama/models
+      - ./ollama-entrypoint.sh:/ollama-entrypoint.sh
+    entrypoint: ["/bin/sh", "/ollama-entrypoint.sh"]
+    restart: unless-stopped
+    profiles: ["ollama"]
+
+  # Optional: LocalAI (OpenAI-compatible)
+  localai:
+    image: localai/localai:latest
+    environment:
+      - MODELS_PATH=/models
+    ports:
+      - "8082:8080"
+    volumes:
+      - type: bind
+        source: ./localai_models
+        target: /models
+    restart: unless-stopped
+    profiles: ["localai"]
