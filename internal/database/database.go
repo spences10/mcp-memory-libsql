@@ -35,10 +35,6 @@ type DBManager struct {
 	search SearchStrategy
 }
 
-// buildFTSMatchExpr moved to search.go
-
-// capFlags moved to capabilities.go
-
 // SetEmbeddingsProvider overrides the embeddings provider (primarily for tests)
 func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
 	dm.provider = p
@@ -167,12 +163,6 @@ func (dm *DBManager) ValidateProjectAuth(projectName string, providedToken strin
 	return nil
 }
 
-// getPreparedStmt returns or prepares and caches a statement for the given project DB
-// implemented in stmt_cache.go
-
-// detectCapabilities probes presence of vector_top_k and records flags.
-// NOTE: implementation lives in capabilities.go
-
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported
 func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
 	// Recreate FTS table with robust tokenizer and prefix support for queries like "Task:*"
@@ -213,21 +203,6 @@ func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
         WHERE NOT EXISTS (SELECT 1 FROM fts_observations f WHERE f.rowid = o.id)`)
 	return nil
 }
-
-// CreateEntities creates or updates entities with their observations
-// moved to entities_crud.go
-
-// UpdateEntities applies partial updates to entities
-// moved to entities_crud.go
-
-// UpdateRelations updates relation tuples via delete/insert
-// moved to relations.go
-
-// SearchSimilar performs vector similarity search
-// moved to search.go
-
-// getEntityObservations retrieves all observations for an entity
-// moved to entities_crud.go
 
 // GetEntity retrieves a single entity by name
 func (dm *DBManager) GetEntity(ctx context.Context, projectName string, name string) (*apptype.Entity, error) {
@@ -377,15 +352,6 @@ func (dm *DBManager) AddObservations(ctx context.Context, projectName string, en
 	success = true
 	return nil
 }
-
-// SearchEntities performs text-based search
-// moved to search.go
-
-// GetRecentEntities retrieves recently created entities
-// moved to graph.go
-
-// CreateRelations creates multiple relations between entities
-// moved to relations.go
 
 // DeleteEntity deletes an entity and all associated data
 func (dm *DBManager) DeleteEntity(ctx context.Context, projectName string, name string) error {
