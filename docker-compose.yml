@@ -28,10 +28,10 @@ services:
       - HYBRID_RRF_K=${HYBRID_RRF_K:-60}
       # Metrics
       - METRICS_PROMETHEUS=${METRICS_PROMETHEUS:-true}
-      - METRICS_ADDR=${METRICS_ADDR:-:${METRICS_PORT:-9090}}
-      # Transport / main address (container listens on ADDR, host maps via ports below)
+      - METRICS_PORT=${METRICS_PORT:-9090}
+      # Transport / main address (container listens on PORT, host maps via ports below)
       - TRANSPORT=${TRANSPORT:-sse}
-      - ADDR=${ADDR:-:${PORT:-8080}}
+      - PORT=${PORT:-8080}
       - SSE_ENDPOINT=${SSE_ENDPOINT:-/sse}
       # Multi-project auth toggles
       - MULTI_PROJECT_AUTH_REQUIRED=${MULTI_PROJECT_AUTH_REQUIRED}
@@ -58,7 +58,7 @@ services:
         "-transport",
         "${TRANSPORT:-sse}",
         "-addr",
-        "${ADDR:-:${PORT:-8080}}",
+        "-:${PORT:-8080}",
         "-sse-endpoint",
         "${SSE_ENDPOINT:-/sse}",
       ]
@@ -70,15 +70,14 @@ services:
         source: ./data
         target: /data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:${METRICS_PORT:-9090}/healthz || pgrep -x mcp-memory-libsql-go >/dev/null",
-        ]
+      test: >
+        CMD-SHELL
+        curl -fsS http://127.0.0.1:${METRICS_PORT:-9090}/healthz ||
+        pgrep -x mcp-memory-libsql-go >/dev/null
       interval: 30s
       timeout: 5s
-      start_period: 10s
-      retries: 3
+      start_period: 30s
+      retries: 12
     profiles: ["memory"]
 
   # Optional: Ollama for local embeddings

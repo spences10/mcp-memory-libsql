@@ -84,8 +84,9 @@ func TimeTool(tool string) func(success bool) {
 }
 
 // InitFromEnv enables Prometheus exporter if METRICS_PROMETHEUS=true.
-// It also starts a small HTTP server on METRICS_ADDR (default :9090)
-// with endpoints: /metrics (prom) and /healthz (200 ok).
+// It also starts a small HTTP server on the port configured by METRICS_PORT
+// (default 9090) and listens on ":<port>" with endpoints: /metrics (prom)
+// and /healthz (200 ok).
 func InitFromEnv() {
 	// Only proceed when explicitly enabled via env.
 	if os.Getenv("METRICS_PROMETHEUS") == "" {
@@ -96,10 +97,12 @@ func InitFromEnv() {
 			sampleEveryN = n
 		}
 	}
-	addr := os.Getenv("METRICS_ADDR")
-	if addr == "" {
-		addr = ":9090"
+	// Prefer explicit METRICS_PORT (numeric). If unset, default to 9090.
+	port := os.Getenv("METRICS_PORT")
+	if port == "" {
+		port = "9090"
 	}
+	addr := ":" + port
 	// Idempotent initialization: ensure listener/recorder starts once.
 	serveOnce.Do(func() {
 		// Try to install prometheus recorder; if it fails, keep noop.

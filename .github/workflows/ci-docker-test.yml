@@ -37,30 +37,34 @@ jobs:
       - name: Build Docker image
         run: make docker-build
 
-      # Run integration tests with healthcheck wait
-      - name: Run integration tests
+      - name: Create CI env file
         run: |
-          # Start containers in detached mode
-          docker compose up -d
-          
-          # Wait for the container to become healthy (max 60s)
-          for i in {1..12}; do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' mcp-memory-libsql-go-memory-1 || echo "unknown")
-            echo "Container health: $STATUS"
-            if [ "$STATUS" = "healthy" ]; then
-              break
-            fi
-            sleep 5
-          done
-          
-          # If still not healthy after waiting, fail with logs
-          if [ "$STATUS" != "healthy" ]; then
-            docker compose logs
-            exit 1
-          fi
+          cat > .env.ci <<'EOF'
+          LIBSQL_AUTH_TOKEN=
+          EMBEDDINGS_PROVIDER=
+          EMBEDDINGS_ADAPT_MODE=
+          DB_MAX_OPEN_CONNS=16
+          DB_MAX_IDLE_CONNS=8
+          DB_CONN_MAX_IDLE_SEC=30
+          DB_CONN_MAX_LIFETIME_SEC=60
+          HYBRID_SEARCH=true
+          HYBRID_TEXT_WEIGHT=0.4
+          HYBRID_VECTOR_WEIGHT=0.6
+          HYBRID_RRF_K=60
+          METRICS_PROMETHEUS=true
+          METRICS_PORT=:9090
+          TRANSPORT=sse
+          PORT=:8080
+          SSE_ENDPOINT=/sse
+          MULTI_PROJECT_AUTH_REQUIRED=false
+          MULTI_PROJECT_AUTO_INIT_TOKEN=true
+          MULTI_PROJECT_DEFAULT_TOKEN=ci-token
+          BUILD_DATE=${BUILD_DATE:-ci}
+          EOF
 
-          # Run your tests
-          make docker-test
+      # Build and run full docker test (Makefile handles profiles and healthcheck)
+      - name: Run Makefile docker-test
+        run: make docker-test ENV_FILE=.env.ci
         env:
           PORT_SSE: ${{ env.PORT_SSE }}
           PORT_METRICS: ${{ env.PORT_METRICS }}

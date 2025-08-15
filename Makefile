@@ -152,10 +152,10 @@ env-prod:
 	  echo "DB_CONN_MAX_LIFETIME_SEC=300"; \
 	  echo; \
 	  echo "METRICS_PROMETHEUS=true"; \
-	  echo "METRICS_ADDR=:9090"; \
+	  echo "METRICS_PORT=:9090"; \
 	  echo; \
 	  echo "TRANSPORT=sse"; \
-	  echo "ADDR=:8080"; \
+	  echo "PORT=:8080"; \
 	  echo "SSE_ENDPOINT=/sse"; \
 	  echo; \
 	  echo "# Multi-project auth toggles"; \
@@ -191,10 +191,10 @@ env-voyage:
 	  echo "EMBEDDING_DIMS=1024"; \
 	  echo "EMBEDDINGS_ADAPT_MODE=pad_or_truncate"; \
 	  echo "TRANSPORT=sse"; \
-	  echo "ADDR=:8080"; \
+	  echo "PORT=:8080"; \
 	  echo "SSE_ENDPOINT=/sse"; \
 	  echo "METRICS_PROMETHEUS=true"; \
-	  echo "METRICS_ADDR=:9090"; \
+	  echo "METRICS_PORT=:9090"; \
 	  echo "HYBRID_SEARCH=true"; \
 	} > .env.voyage
 
