@@ -18,7 +18,19 @@ multi)
     ;;
 voyageai)
     # voyageai uses same multi-project flags but expects VOYAGE env vars to be present
-    exec /usr/local/bin/mcp-memory-libsql-go -transport ${TRANSPORT:-sse} -addr :${PORT} -sse-endpoint ${SSE_ENDPOINT:-/sse} -projects-dir ${PROJECTS_DIR}
+# Extract common command line arguments
+COMMON_ARGS="-transport ${TRANSPORT:-sse} -addr :${PORT} -sse-endpoint ${SSE_ENDPOINT:-/sse}"
+
+case "$MODE" in
+single)
+    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS
+    ;;
+multi)
+    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS -projects-dir ${PROJECTS_DIR}
+    ;;
+voyageai)
+    # voyageai uses same multi-project flags but expects VOYAGE env vars to be present
+    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS -projects-dir ${PROJECTS_DIR}
     ;;
 *)
     echo "Unknown MODE='$MODE' - expected single|multi|voyageai" >&2
