@@ -33,6 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/mcp-memory-libsql-go /usr/local/bin/mcp-memory-libsql-go
+# copy entrypoint and make executable (keep ownership change after)
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 USER app
 
 # Default environment variables
@@ -44,7 +47,7 @@ ENV LIBSQL_URL="file:/data/libsql.db" \
     DB_CONN_MAX_IDLE_SEC="" \
     DB_CONN_MAX_LIFETIME_SEC="" \
     METRICS_PROMETHEUS="" \
-    METRICS_ADDR=":9090" \
+    METRICS_PORT="9090" \
     EMBEDDINGS_PROVIDER="" \
     HYBRID_SEARCH="" \
     HYBRID_TEXT_WEIGHT=0.4 \
@@ -68,7 +71,8 @@ EXPOSE 8080 9090
 # Healthcheck hits metrics healthz if enabled, otherwise process check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD curl -fsS http://127.0.0.1:9090/healthz || pgrep -x mcp-memory-libsql-go >/dev/null || exit 1
 
-ENTRYPOINT ["/usr/local/bin/mcp-memory-libsql-go"]
+# Entrypoint handles MODE selection (single|multi|voyageai)
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Single DB SSE stage
 FROM base AS single-db-sse

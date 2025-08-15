@@ -1,0 +1,73 @@
+name: CI - Docker Test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  PORT_SSE: 8080
+  PORT_METRICS: 9090
+  PROFILES: memory
+  GO_VERSION: "1.24"
+
+jobs:
+  docker-test:
+    name: Build image and run integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      # Build Docker image
+      - name: Build Docker image
+        run: make docker-build
+
+      - name: Create CI env file
+        run: |
+          cat > .env.ci <<'EOF'
+          LIBSQL_AUTH_TOKEN=
+          EMBEDDINGS_PROVIDER=
+          EMBEDDINGS_ADAPT_MODE=
+          DB_MAX_OPEN_CONNS=16
+          DB_MAX_IDLE_CONNS=8
+          DB_CONN_MAX_IDLE_SEC=30
+          DB_CONN_MAX_LIFETIME_SEC=60
+          HYBRID_SEARCH=true
+          HYBRID_TEXT_WEIGHT=0.4
+          HYBRID_VECTOR_WEIGHT=0.6
+          HYBRID_RRF_K=60
+          METRICS_PROMETHEUS=true
+          METRICS_PORT=9090
+          TRANSPORT=sse
+          PORT=8080
+          SSE_ENDPOINT=/sse
+          MULTI_PROJECT_AUTH_REQUIRED=false
+          MULTI_PROJECT_AUTO_INIT_TOKEN=true
+          MULTI_PROJECT_DEFAULT_TOKEN=ci-token
+          BUILD_DATE=${BUILD_DATE:-ci}
+          EOF
+
+      # Build and run full docker test (Makefile handles profiles and healthcheck)
+      - name: Run Makefile docker-test
+        run: make docker-test ENV_FILE=.env.ci
+        env:
+          PORT_SSE: ${{ env.PORT_SSE }}
+          PORT_METRICS: ${{ env.PORT_METRICS }}
+          PROFILES: ${{ env.PROFILES }}
+          # ensure world-writable data dir in CI for container user
+          UMASK: "000"

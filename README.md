@@ -105,9 +105,9 @@ OPENAI_API_KEY=sk-...
 OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small
 EMBEDDING_DIMS=1536
 METRICS_PROMETHEUS=true
-METRICS_ADDR=:9090
+METRICS_PORT=:9090
 TRANSPORT=sse
-ADDR=:8080
+PORT=:8080
 SSE_ENDPOINT=/sse
 EOF
 ```
@@ -129,6 +129,27 @@ Start single DB SSE server:
 ```bash
 docker compose --profile single up --build -d
 ```
+
+#### MODE (new unified Compose behavior)
+
+The Compose setup now exposes a single `memory` service that switches behavior via the `MODE` environment variable. Set `MODE` to one of:
+
+- `single` — single-database mode (default)
+- `multi` — multi-project mode (uses `PROJECTS_DIR`)
+- `voyageai` — multi-project mode with VoyageAI provider-specific envs
+
+Examples:
+
+```bash
+# single (default)
+MODE=single docker compose --profile memory up --build -d
+
+# multi-project mode (projects under ./data/projects)
+MODE=multi PROJECTS_DIR=./data/projects docker compose --profile memory up --build -d
+```
+
+For Coolify or other deploy systems, call `make docker-build` to build the image and `make docker-run` (or set `MODE`/`PORT`/`METRICS_PORT` in the deploy env) to start the container. This decouples build and runtime for CI/CD.
+
 
 OpenAI quick start (using `.env` above):
 
@@ -197,7 +218,7 @@ docker compose down -v
 
 ```bash
 docker run --rm -p 8080:8080 -p 9090:9090 \
-  -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
+  -e METRICS_PROMETHEUS=true -e METRICS_PORT=":9090" \
   -e EMBEDDING_DIMS=768 \
   -v $(pwd)/data:/data \
   mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
@@ -367,7 +388,7 @@ _, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "create_entities", Argume
 - `DB_CONN_MAX_IDLE_SEC`: Connection max idle time in seconds (optional)
 - `DB_CONN_MAX_LIFETIME_SEC`: Connection max lifetime in seconds (optional)
 - `METRICS_PROMETHEUS`: If set (e.g., `true`), expose Prometheus metrics
-- `METRICS_ADDR`: Metrics HTTP address (default `:9090`) exposing `/metrics` and `/healthz`
+- `METRICS_PORT`: Metrics HTTP port (default `9090`) exposing `/metrics` and `/healthz`
 - `EMBEDDINGS_PROVIDER`: Optional embeddings source. Supported values and aliases:
   - `openai`
   - `ollama`
@@ -578,7 +599,7 @@ The server provides the following MCP tools:
 
 #### Metrics
 
-- Set `METRICS_PROMETHEUS=true` to expose `/metrics` and `/healthz` on `METRICS_ADDR` (default `:9090`).
+- Set `METRICS_PROMETHEUS=true` to expose `/metrics` and `/healthz` on `METRICS_PORT` (default `9090`).
 - DB hot paths and tool handlers are instrumented with counters and latency histograms.
 - Additional gauges and counters:
   - `db_pool_gauges{state="in_use|idle"}` observed periodically and on `health_check`
@@ -943,7 +964,7 @@ Cursor/Cline SSE config:
 - Docker run (SSE):
   ```bash
   docker run --rm -p 8080:8080 -p 9090:9090 \
-    -e METRICS_PROMETHEUS=true -e METRICS_ADDR=":9090" \
+    -e METRICS_PROMETHEUS=true -e METRICS_PORT=":9090" \
     -e EMBEDDING_DIMS=768 \
     -v $(pwd)/data:/data \
     mcp-memory-libsql-go:local -transport sse -addr :8080 -sse-endpoint /sse
