@@ -3,6 +3,45 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [0.2.0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.1.1...v0.2.0) (2025-08-15)
+
+### 🐛 Bug Fixes
+
+* **database:** restore internal searchNodesInternal; docs comments; keep behavior parity ([0dc629f](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/0dc629fd4cb6cb35c77e7301381c51266d359d43))
+
+### 📝 Documentation
+
+* **database:** add doc comments to search.go and graph.go ([977ebb3](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/977ebb32b48735f76647f2d575698f548bff464f))
+* Improve formatting of comments in internal/database/search.go ([19d9adf](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/19d9adf66a405009e7548fab751143f553a19b3a))
+* Update internal/database/entities_crud.go ([27bff97](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/27bff9768714d261f31a4db0a8e32e8c8194f172))
+* Update internal/database/graph.go ([cdec1a5](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/cdec1a59e3eaa898af36acdeca87450078b36e2d))
+* Update internal/database/search.go ([5b9fe6a](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/5b9fe6ad5b5fce0978adcfa4fe836498f3e6a88c))
+* Update internal/database/search.go ([dc586e4](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/dc586e436e1d3e1d8139b2861e6c88bfb6dd9442))
+* Update internal/database/vectors.go ([39a4c58](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/39a4c5871e8e2a9b95340bc29f452a8d76e6213f))
+
+### 🧑‍💻 Code Refactoring
+
+* **database:** add exported SearchNodes delegating to internal; green external references ([71c1dd0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/71c1dd00c1b749ddd195f615329a9ba3e3f31425))
+* **database:** add searchNodesInternal to search.go and tidy imports ([dec1005](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/dec10056392b807558139df3e56ae4360d1406a1))
+* **database:** clean imports and remove duplicate getPreparedStmt in database.go ([aae481e](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/aae481ed26c4d2e962bc4694d9db9023180c44cb))
+* **database:** extract capability detection to capabilities.go and stub original reference (no behavior change) ([ecd7e12](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/ecd7e12f1f634c7dda757f862bea6e1160f9a469))
+* **database:** extract conn.go (NewDBManager/getDB/initialize/detectDBEmbeddingDims) without behavior changes ([995c4a3](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/995c4a3f653569df6735d8bb86d8f9dbe35492f8))
+* **database:** extract entities_crud.go and relations.go (no behavior changes) ([68e44a2](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/68e44a2021c1dc1bf97e68d1161e7cd4df12f8c7))
+* **database:** extract search.go and graph.go scaffolding (no behavior change); keep database.go stubs ([4d9e7f9](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/4d9e7f9e40d03987d4a9d1081d519b0dda71fee9))
+* **database:** extract stmt cache (stmt_cache.go) and vector utilities (vectors.go); stub originals (no behavior change) ([61a4caa](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/61a4caa0c57dd5017deab02061a9abd0c9664124))
+* **database:** finalize extraction of CRUD and relations from database.go; removed duplicates ([33b4c8d](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/33b4c8ddd2cf110b378feb430359ff67ff074d25))
+* **database:** modularize internal/database into focused files (1:1 parity) ([ef158f5](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/ef158f5ff79a0b3364719e2093edbf4ce04d012f)), closes [#37](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/issues/37)
+* **database:** move buildFTSMatchExpr to search.go; consolidate search helpers ([ce52042](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/ce52042ed0928dbd47fd552bb7e45e6132fec940))
+* **database:** move capFlags and detectCapabilitiesForProject to capabilities.go (no behavior change) ([1481196](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/1481196aa39f7a9b549f33e729d1b07b00b429f8))
+* **database:** move GetNeighbors/Walk/ShortestPath/ReadGraph to graph.go; leave stubs in database.go ([4b916e0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/4b916e04e36503ddd1f4d73dd97b359455da3eae))
+* **database:** move GetRelationsForEntities to graph.go and remove duplicates ([6b55f92](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/6b55f921bc4f0eaab1b6ba88d4080e55d42fa425))
+* **database:** move search strategy/types and GetRecentEntities out of database.go; fix imports ([b897e02](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/b897e022cc6f9b795aeaa77c06fba6aec8c9269e))
+* **database:** move SearchEntities into search.go; remove duplicate from database.go ([af1eb85](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/af1eb85eeae608fee34f36e61d82616596756d5d))
+* **database:** move SearchNodes/searchNodesInternal to search.go; leave stubs in database.go ([c812296](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/c81229626e69c0dc55ad06add4dc789fec026da4))
+* **database:** move SearchSimilar and GetRecentEntities out of database.go; tidy imports ([fc7532c](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/fc7532c70c74519f09d89d3927aeb992e0215c3c))
+* **database:** remove duplicate detectCapabilitiesForProject from database.go; source in capabilities.go ([0ced0b6](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/0ced0b63c3dab3ff2e24cf8ce90237eb208d0e17))
+* **database:** remove redundant type declaration in search.go ([bbb1b08](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/bbb1b08a163bb905869338fee708cfdb0c537590))
+
 ## [0.1.1](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.1.0...v0.1.1) (2025-08-15)
 
 ### 🧑‍💻 Code Refactoring
