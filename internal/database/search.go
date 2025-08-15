@@ -247,3 +247,143 @@ func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embe
 	success = true
 	return searchResults, nil
 }
+
+// SearchEntities performs text-based search
+func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, query string, limit int, offset int) ([]apptype.Entity, error) {
+	done := metrics.TimeOp("db_search_entities")
+	success := false
+	defer func() { done(success) }()
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return nil, err
+	}
+	if query == "" {
+		return nil, fmt.Errorf("search query cannot be empty")
+	}
+	likePattern := "%" + strings.ReplaceAll(query, "*", "%") + "%"
+	if limit <= 0 {
+		limit = 5
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	dm.capMu.RLock()
+	caps := dm.capsByProject[projectName]
+	dm.capMu.RUnlock()
+	useFTS := caps.fts5
+	var rows *sql.Rows
+	if useFTS {
+		bm25Enabled := true
+		if v := os.Getenv("BM25_ENABLE"); strings.EqualFold(v, "false") || v == "0" {
+			bm25Enabled = false
+		}
+		bmK1 := os.Getenv("BM25_K1")
+		bmB := os.Getenv("BM25_B")
+		bmExpr := "bm25(f)"
+		if bm25Enabled && bmK1 != "" && bmB != "" {
+			bmExpr = fmt.Sprintf("bm25(f,%s,%s)", bmK1, bmB)
+		}
+		qftsBase := "SELECT DISTINCT e.name, e.entity type, e.embedding\n" +
+			"            FROM fts_observations f\n" +
+			"            JOIN observations o ON o.id = f.rowid\n" +
+			"            JOIN entities e ON e.name = o.entity_name\n" +
+			"            WHERE f.fts_observations MATCH ?\n"
+		qftsOrderBM := fmt.Sprintf("%s            ORDER BY %s ASC\n            LIMIT ? OFFSET ?", qftsBase, bmExpr)
+		qftsOrderName := qftsBase + "            ORDER BY e.name ASC\n            LIMIT ? OFFSET ?"
+		expr := dm.buildFTSMatchExpr(query)
+		var err error
+		if bm25Enabled {
+			if stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderBM); perr == nil {
+				rows, err = stmt.QueryContext(ctx, expr, limit, offset)
+			} else {
+				err = perr
+			}
+			if err != nil {
+				low := strings.ToLower(err.Error())
+				if strings.Contains(low, "no such function: bm25") || strings.Contains(low, "wrong number of arguments to function bm25") {
+					err = nil
+				} else if strings.Contains(low, "no such module: fts5") {
+					dm.capMu.Lock()
+					c := dm.capsByProject[projectName]
+					c.fts5 = false
+					dm.capsByProject[projectName] = c
+					dm.capMu.Unlock()
+					useFTS = false
+				} else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
+					useFTS = false
+				} else {
+					return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+				}
+			}
+		}
+		if useFTS && rows == nil {
+			stmt, perr := dm.getPreparedStmt(ctx, projectName, db, qftsOrderName)
+			if perr != nil {
+				return nil, perr
+			}
+			rows, err = stmt.QueryContext(ctx, expr, limit, offset)
+			if err != nil {
+				low := strings.ToLower(err.Error())
+				if strings.Contains(low, "no such module: fts5") {
+					dm.capMu.Lock()
+					c := dm.capsByProject[projectName]
+					c.fts5 = false
+					dm.capsByProject[projectName] = c
+					dm.capMu.Unlock()
+					useFTS = false
+				} else if strings.Contains(low, "malformed match") || strings.Contains(low, "no such column") || strings.Contains(low, "no such table: fts_observations") {
+					useFTS = false
+				} else {
+					return nil, fmt.Errorf("failed to execute FTS search: %w", err)
+				}
+			}
+		}
+	}
+	if !useFTS {
+		const q = `SELECT DISTINCT e.name, e.entity_type, e.embedding
+            FROM entities e
+            LEFT JOIN observations o ON e.name = o.entity_name
+            WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
+            ORDER BY e.name ASC
+            LIMIT ? OFFSET ?`
+		stmt, err := dm.getPreparedStmt(ctx, projectName, db, q)
+		if err != nil {
+			return nil, err
+		}
+		rows, err = stmt.QueryContext(ctx, likePattern, likePattern, likePattern, limit, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute entity search: %w", err)
+		}
+	}
+	defer rows.Close()
+	var entities []apptype.Entity
+	for rows.Next() {
+		var name, entityType string
+		var embeddingBytes []byte
+		if err := rows.Scan(&name, &entityType, &embeddingBytes); err != nil {
+			log.Printf("Warning: Failed to scan entity row: %v", err)
+			continue
+		}
+		observations, err := dm.getEntityObservations(ctx, projectName, name)
+		if err != nil {
+			log.Printf("Warning: Failed to get observations for entity %q: %v", name, err)
+			continue
+		}
+		vector, err := dm.ExtractVector(ctx, embeddingBytes)
+		if err != nil {
+			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
+			continue
+		}
+		entities = append(entities, apptype.Entity{
+			Name:         name,
+			EntityType:   entityType,
+			Observations: observations,
+			Embedding:    vector,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating entity results: %w", err)
+	}
+	success = true
+	return entities, nil
+}
