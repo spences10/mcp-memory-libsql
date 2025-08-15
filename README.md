@@ -112,6 +112,61 @@ SSE_ENDPOINT=/sse
 EOF
 ```
 
+#### Pre-built GHCR image (quick-start)
+
+We publish pre-built images to the GitHub Container Registry (GHCR) so you can get started without building locally.
+
+1) Authenticate (if pulling a private image or using rate-limited endpoints - most of you can skip this step):
+
+```bash
+# Create a Personal Access Token (read:packages) and store it in $CR_PAT
+echo $CR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+2) Pull the latest pre-built image:
+
+```bash
+docker pull ghcr.io/ZanzyTHEbar/mcp-memory-libsql-go:latest
+# or pull a specific tag:
+docker pull ghcr.io/ZanzyTHEbar/mcp-memory-libsql-go:<version>
+```
+
+3) Run the container (example SSE mode):
+
+```bash
+docker run --rm -p 8080:8080 -p 9090:9090 \
+  -e METRICS_PROMETHEUS=true -e METRICS_PORT=":9090" \
+  -e EMBEDDING_DIMS=768 \
+  -v $(pwd)/data:/data \
+  ghcr.io/ZanzyTHEbar/mcp-memory-libsql-go:latest -transport sse -addr :8080 -sse-endpoint /sse
+```
+
+4) Use with Docker Compose
+
+Edit the `docker-compose.yml` to use the GHCR image (replace the `build:` section or set `image:`):
+
+```yaml
+services:
+  memory:
+    image: ghcr.io/ZanzyTHEbar/mcp-memory-libsql-go:latest
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    env_file: .env
+    volumes:
+      - ./data:/data
+```
+
+Then start:
+
+```bash
+docker compose --profile single up -d
+```
+
+5) Where to find tags
+
+Visit the project Releases or the GitHub Packages /ghcr page for this repository to find available tags and changelogs.
+
 > [!IMPORTANT]
 > Each database fixes its embedding size at creation (`F32_BLOB(N)`). The server now (1) detects the DB’s current size at startup and (2) automatically adapts provider outputs via padding/truncation so you can change provider/model without migrating the DB. To change the actual stored size, create a new DB (or run a manual migration) with a different `EMBEDDING_DIMS`.
 
@@ -130,15 +185,15 @@ Start single DB SSE server:
 docker compose --profile single up --build -d
 ```
 
-#### MODE (new unified Compose behavior)
+#### MODE
 
-The Compose setup now exposes a single `memory` service that switches behavior via the `MODE` environment variable. Set `MODE` to one of:
+The Compose setup exposes a single `memory` service that switches behavior via the `MODE` environment variable. Set `MODE` to one of:
 
 - `single` — single-database mode (default)
 - `multi` — multi-project mode (uses `PROJECTS_DIR`)
 - `voyageai` — multi-project mode with VoyageAI provider-specific envs
 
-Examples:
+Example one-liners:
 
 ```bash
 # single (default)
@@ -146,10 +201,15 @@ MODE=single docker compose --profile memory up --build -d
 
 # multi-project mode (projects under ./data/projects)
 MODE=multi PROJECTS_DIR=./data/projects docker compose --profile memory up --build -d
+
+# multi-project mode (projects under ./data/projects) with ollama
+MODE=multi PROJECTS_DIR=./data/projects docker compose --profile ollama up --build -d
 ```
 
-For Coolify or other deploy systems, call `make docker-build` to build the image and `make docker-run` (or set `MODE`/`PORT`/`METRICS_PORT` in the deploy env) to start the container. This decouples build and runtime for CI/CD.
+> [!NOTE]
+> For Coolify or other deploy systems, call `make docker-build` to build the image and `make docker-run` (or set `MODE`/`PORT`/`METRICS_PORT` in the deploy env) to start the container. This decouples build and runtime for CI/CD.
 
+---
 
 OpenAI quick start (using `.env` above):
 
@@ -165,7 +225,7 @@ EMBEDDINGS_PROVIDER=ollama
 OLLAMA_HOST=http://ollama:11434
 EMBEDDING_DIMS=768
 TRANSPORT=sse
-# Optional: increase timeout to allow cold model load
+# Optional: increase timeout to allow cold model load for larger models
 OLLAMA_HTTP_TIMEOUT=60s
 EOF
 
@@ -234,7 +294,10 @@ export LIBSQL_AUTH_TOKEN=your-token
 docker compose --profile single up --build -d
 ```
 
-If you later change `EMBEDDING_DIMS`, it will not alter an existing DB’s schema. The server will continue to adopt the DB’s actual size. To change sizes, create a new DB or migrate.
+If you later change `EMBEDDING_DIMS`, it will not alter an existing DB’s schema. The server will continue to adopt the DB’s actual size. To change sizes, create a new DB or migrate*.
+
+> [!NOTE]
+> `*` Automated migrations will be coming in the future
 
 #### Example (Go) SSE client
 
@@ -804,7 +867,7 @@ This server supports both stdio transport (default) and SSE transport. Use `-tra
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.24 or later
 - libSQL CGO dependencies (automatically handled by go-libsql)
 
 ### Building
