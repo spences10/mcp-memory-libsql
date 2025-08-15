@@ -9,7 +9,6 @@ env:
   PORT_METRICS: 9090
   PROFILES: memory
   GO_VERSION: "1.24"
-  DOCKER_COMPOSE_VERSION: "v2.39.2"
 
 jobs:
   build:
@@ -38,8 +37,6 @@ jobs:
 
       # Set up Docker Compose
       - uses: docker/compose@main
-        with:
-          version: ${{ env.DOCKER_COMPOSE_VERSION }}
 
       # Show versions
       - run: |
@@ -62,9 +59,7 @@ jobs:
           cache: true
 
       - uses: docker/setup-buildx-action@v2
-      - uses: docker/compose@v2
-        with:
-          version: ${{ env.DOCKER_COMPOSE_VERSION }}
+      - uses: docker/compose@main
 
       - run: make docker-test
         env:
