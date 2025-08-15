@@ -9,7 +9,6 @@ env:
   PORT_METRICS: 9090
   PROFILES: memory
   GO_VERSION: "1.24"
-  DOCKER_COMPOSE_VERSION: "v2.39.2"
 
 jobs:
   docker-test:
@@ -20,36 +19,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Install Go with caching
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # Set up Docker Buildx (includes Compose v2 on ubuntu-latest)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Optional: install a specific Compose version
-      - name: Install Docker Compose v2
-        run: |
-          mkdir -p ~/.docker/cli-plugins/
-          curl -SL https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64 \
-            -o ~/.docker/cli-plugins/docker-compose
-          chmod +x ~/.docker/cli-plugins/docker-compose
-          docker compose version
-
-      # Cache Docker build layers
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      # Show versions
       - name: Show Docker versions
         run: |
           docker --version
@@ -59,9 +37,30 @@ jobs:
       - name: Build Docker image
         run: make docker-build
 
-      # Run integration tests
+      # Run integration tests with healthcheck wait
       - name: Run integration tests
-        run: make docker-test
+        run: |
+          # Start containers in detached mode
+          docker compose up -d
+          
+          # Wait for the container to become healthy (max 60s)
+          for i in {1..12}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' mcp-memory-libsql-go-memory-1 || echo "unknown")
+            echo "Container health: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              break
+            fi
+            sleep 5
+          done
+          
+          # If still not healthy after waiting, fail with logs
+          if [ "$STATUS" != "healthy" ]; then
+            docker compose logs
+            exit 1
+          fi
+
+          # Run your tests
+          make docker-test
         env:
           PORT_SSE: ${{ env.PORT_SSE }}
           PORT_METRICS: ${{ env.PORT_METRICS }}
