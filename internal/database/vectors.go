@@ -95,7 +95,20 @@ func (dm *DBManager) ExtractVector(ctx context.Context, embedding []byte) ([]flo
 	return vector, nil
 }
 
-// coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32
+// coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32.
+//
+// Supported input types:
+//   - []float32: returns a copy of the slice.
+//   - []float64: converts each element to float32 (may lose precision).
+//   - []int, []int64: converts each element to float32.
+//   - []interface{}: attempts to convert each element to float32 if possible (supports float32, float64, int, int64, string representations of numbers).
+//   - JSON-encoded string representing a slice of numbers (e.g., "[1.0, 2.0, 3.0]").
+//   - Any other type will result in a failed conversion.
+//
+// Returns:
+//   - ([]float32): the converted slice.
+//   - (bool): true if conversion succeeded, false otherwise.
+//   - (error): error if conversion failed or if an element could not be converted.
 func coerceToFloat32Slice(value interface{}) ([]float32, bool, error) {
 	switch v := value.(type) {
 	case []float32:
