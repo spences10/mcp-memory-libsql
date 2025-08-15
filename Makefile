@@ -116,8 +116,8 @@ docker-run-multi: data
 ## Silence command echoing for docker-test target while still printing our own echoes
 .SILENT: docker-test
 .PHONY: docker-test
-docker-test: data
-	@echo "Checking for existing image $(DOCKER_IMAGE)..."; \
+	docker-test: data
+	echo "Checking for existing image $(DOCKER_IMAGE)..."; \
 	if docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1; then \
 		echo "Found image $(DOCKER_IMAGE)"; \
 	else \
@@ -142,8 +142,8 @@ docker-test: data
 		started=1; \
 	fi; \
 	# Wait for health (container health or metrics endpoint), up to 90s
-	@echo "Waiting for health (up to 90s)..."; \
-	@echo "Host data perms:"; ls -la ./data || true; \
+	echo "Waiting for health (up to 90s)..."; \
+	echo "Host data perms:"; ls -la ./data || true; \
 	for i in $$(seq 1 90); do \
 	  cid=$$(docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) ps -q memory 2>/dev/null || true); \
 	  if [ -n "$$cid" ]; then \
@@ -171,7 +171,7 @@ docker-test: data
 		echo "Leaving existing containers running"; \
 	fi; \
 	# Audit/report
-	@echo "--- Integration Test Report (integration-report.json) ---"; \
+	echo "--- Integration Test Report (integration-report.json) ---"; \
 	cat integration-report.json | jq '.' || cat integration-report.json
 
 # Compose helpers
