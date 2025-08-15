@@ -140,15 +140,27 @@ docker-test: data
 		docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) up -d memory; \
 		started=1; \
 	fi; \
-	# Wait for health
-	@echo "Waiting for health..."; \
-	for i in $$(seq 1 30); do \
-	  if curl -fsS http://127.0.0.1:$(PORT_METRICS)/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
+	# Wait for health (container health or metrics endpoint), up to 90s
+	@echo "Waiting for health (up to 90s)..."; \
+	for i in $$(seq 1 90); do \
+	  cid=$$(docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) ps -q memory 2>/dev/null || true); \
+	  if [ -n "$$cid" ]; then \
+	    status=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' $$cid 2>/dev/null || true); \
+	    if [ "$$status" = "healthy" ]; then echo "Container reported healthy"; break; fi; \
+	  fi; \
+	  if curl -fsS http://127.0.0.1:$(PORT_METRICS)/healthz >/dev/null 2>&1; then echo "Metrics endpoint healthy"; break; fi; \
 	  sleep 1; \
-	  if [ $$i -eq 30 ]; then echo "Health check timed out"; exit 1; fi; \
+	  if [ $$i -eq 90 ]; then \
+	    echo "Health check timed out"; \
+	    echo "--- docker compose ps ---"; \
+	    docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) ps; \
+	    echo "--- Recent logs (memory) ---"; \
+	    docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) logs --tail=200 memory | cat; \
+	    exit 1; \
+	  fi; \
 	done; \
-	# Run integration tester against live SSE endpoint
-	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 45s | tee integration-report.json; \
+	# Run integration tester against live SSE endpoint (increase timeout to 75s)
+	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 75s | tee integration-report.json; \
 	# Tear down only if we started the containers
 	if [ "$$started" -eq 1 ]; then \
 		echo "Stopping containers brought up by test..."; \

@@ -74,10 +74,10 @@ services:
         CMD-SHELL
         curl -fsS http://127.0.0.1:${METRICS_PORT:-9090}/healthz ||
         pgrep -x mcp-memory-libsql-go >/dev/null
-      interval: 30s
+      interval: 5s
       timeout: 5s
-      start_period: 30s
-      retries: 12
+      start_period: 5s
+      retries: 30
     profiles: ["memory"]
 
   # Optional: Ollama for local embeddings
