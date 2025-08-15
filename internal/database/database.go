@@ -19,11 +19,6 @@ import (
 
 // TODO: add a GetRelations method to the DBManager, then update and fix tests that need it
 
-// SearchStrategy allows pluggable search implementations (text/vector/hybrid)
-// moved to search.go
-
-// const defaultProject now defined in conn.go
-
 // DBManager handles all database operations
 type DBManager struct {
 	config *Config
@@ -40,30 +35,7 @@ type DBManager struct {
 	search SearchStrategy
 }
 
-// buildFTSMatchExpr builds a robust MATCH expression for FTS5 that:
-//   - treats trailing '*' as prefix operator
-//   - if the query contains a single token with a trailing ':*' pattern (e.g., "Task:*"),
-//     it rewrites to search both columns for tokens starting with "Task:" using prefix
-//   - otherwise returns the raw query
-func (dm *DBManager) buildFTSMatchExpr(raw string) string {
-	q := strings.TrimSpace(raw)
-	if q == "" {
-		return q
-	}
-	// If looks like Term:* (single token ending with :*)
-	if !strings.ContainsAny(q, " \t\n\r\f\v\u00A0") && strings.HasSuffix(q, ":*") {
-		base := strings.TrimSuffix(q, ":*")
-		base = strings.TrimSpace(base)
-		if base != "" {
-			// Use column-qualified prefix queries on both columns
-			// Quote the token to avoid column lookups (unicode61 tokenchars allows ':')
-			// Example: entity_name:"Task:"* OR content:"Task:"*
-			return fmt.Sprintf("entity_name:\"%s:\"* OR content:\"%s:\"*", base, base)
-		}
-	}
-	// If plain token with '*' suffix, let FTS handle as prefix
-	return q
-}
+// buildFTSMatchExpr moved to search.go
 
 // capFlags moved to capabilities.go
 
@@ -681,25 +653,6 @@ func (dm *DBManager) DeleteObservations(ctx context.Context, projectName string,
 	success = true
 	return total, nil
 }
-
-// GetRelationsForEntities moved to graph.go
-
-// GetNeighbors moved to graph.go
-
-// Walk moved to graph.go
-
-// ShortestPath moved to graph.go
-
-// ReadGraph moved to graph.go
-
-// SearchNodes performs either vector or text search based on query type
-// moved to search.go
-
-// searchNodesInternal retains the pre-strategy behavior to ensure backward compatibility
-// moved to search.go
-
-// coerceToFloat32Slice attempts to interpret arbitrary slice-like inputs as a []float32
-// moved to vectors.go
 
 // Close closes all database connections
 func (dm *DBManager) Close() error {

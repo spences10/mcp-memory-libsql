@@ -502,3 +502,28 @@ func (dm *DBManager) searchNodesInternal(ctx context.Context, projectName string
 func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
 	return dm.searchNodesInternal(ctx, projectName, query, limit, offset)
 }
+
+// buildFTSMatchExpr builds a robust MATCH expression for FTS5 that:
+//   - treats trailing '*' as prefix operator
+//   - if the query contains a single token with a trailing ':*' pattern (e.g., "Task:*"),
+//     it rewrites to search both columns for tokens starting with "Task:" using prefix
+//   - otherwise returns the raw query
+func (dm *DBManager) buildFTSMatchExpr(raw string) string {
+	q := strings.TrimSpace(raw)
+	if q == "" {
+		return q
+	}
+	// If looks like Term:* (single token ending with :*)
+	if !strings.ContainsAny(q, " \t\n\r\f\v\u00A0") && strings.HasSuffix(q, ":*") {
+		base := strings.TrimSuffix(q, ":*")
+		base = strings.TrimSpace(base)
+		if base != "" {
+			// Use column-qualified prefix queries on both columns
+			// Quote the token to avoid column lookups (unicode61 tokenchars allows ':')
+			// Example: entity_name:"Task:"* OR content:"Task:"*
+			return fmt.Sprintf("entity_name:\"%s:\"* OR content:\"%s:\"*", base, base)
+		}
+	}
+	// If plain token with '*' suffix, let FTS handle as prefix
+	return q
+}
