@@ -156,10 +156,10 @@
       "@semantic-release/github",
       {
         "addReleases": false,
-        "successComment": false,
-        "failComment": false,
-        "labels": false,
-        "releasedLabels": false
+        "successComment": true,
+        "failComment": true,
+        "labels": true,
+        "releasedLabels": true
       }
     ],
     [
