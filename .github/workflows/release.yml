@@ -35,6 +35,11 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y build-essential gcc g++
+
       - name: Build
         run: |
           set -euo pipefail
@@ -102,5 +107,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-

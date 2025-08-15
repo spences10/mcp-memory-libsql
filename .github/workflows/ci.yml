@@ -71,6 +71,11 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y build-essential gcc g++
+
       - name: Build cmd targets
         run: |
           set -euo pipefail
@@ -81,6 +86,7 @@ jobs:
     name: Integration Tests (Docker E2E)
     runs-on: ubuntu-latest
     needs: lint-test
+    if: ${{ github.event_name == 'push' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,5 +103,3 @@ jobs:
         run: |
           set -euo pipefail
           make docker-test
-
-
