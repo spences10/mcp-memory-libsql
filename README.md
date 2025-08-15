@@ -130,6 +130,27 @@ Start single DB SSE server:
 docker compose --profile single up --build -d
 ```
 
+#### MODE (new unified Compose behavior)
+
+The Compose setup now exposes a single `memory` service that switches behavior via the `MODE` environment variable. Set `MODE` to one of:
+
+- `single` — single-database mode (default)
+- `multi` — multi-project mode (uses `PROJECTS_DIR`)
+- `voyageai` — multi-project mode with VoyageAI provider-specific envs
+
+Examples:
+
+```bash
+# single (default)
+MODE=single docker compose --profile memory up --build -d
+
+# multi-project mode (projects under ./data/projects)
+MODE=multi PROJECTS_DIR=./data/projects docker compose --profile memory up --build -d
+```
+
+For Coolify or other deploy systems, call `make docker-build` to build the image and `make docker-run` (or set `MODE`/`PORT`/`METRICS_PORT` in the deploy env) to start the container. This decouples build and runtime for CI/CD.
+
+
 OpenAI quick start (using `.env` above):
 
 ```bash
