@@ -243,6 +243,26 @@ func (dm *DBManager) Walk(ctx context.Context, projectName string, seeds []strin
 }
 
 // ShortestPath finds one shortest path (if any) between two entities and returns the path subgraph.
+//
+// This function uses the Breadth-First Search (BFS) algorithm to find the shortest path
+// between the 'from' and 'to' entities in the graph. BFS explores the graph level by level,
+// ensuring that the first path found is one of the shortest possible paths.
+//
+// The returned relations use the RelationType "path" to indicate that these edges are part
+// of the discovered shortest path between the two entities, rather than representing the
+// original relation type in the graph.
+//
+// Parameters:
+//   - ctx: context for cancellation and deadlines
+//   - projectName: the name of the project/graph
+//   - from: the starting entity name
+//   - to: the target entity name
+//   - direction: the direction of traversal ("out", "in", etc.)
+//
+// Returns:
+//   - []apptype.Entity: the entities along the shortest path (including endpoints)
+//   - []apptype.Relation: the relations along the path, with RelationType "path"
+//   - error: error if any occurred during traversal
 func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, direction string) ([]apptype.Entity, []apptype.Relation, error) {
 	if from == "" || to == "" || from == to {
 		return []apptype.Entity{}, []apptype.Relation{}, nil
