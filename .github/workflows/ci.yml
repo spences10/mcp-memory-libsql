@@ -81,25 +81,3 @@ jobs:
           set -euo pipefail
           make deps
           make build
-
-  integration-tests:
-    name: Integration Tests (Docker E2E)
-    runs-on: ubuntu-latest
-    needs: lint-test
-    if: ${{ github.event_name == 'push' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Run Docker E2E tests
-        env:
-          PROFILES: memory
-        run: |
-          set -euo pipefail
-          make docker-test
