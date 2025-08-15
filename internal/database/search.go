@@ -497,3 +497,8 @@ func (dm *DBManager) searchNodesInternal(ctx context.Context, projectName string
 	}
 	return entities, relations, nil
 }
+
+// SearchNodes performs either vector or text search based on query type (exported)
+func (dm *DBManager) SearchNodes(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
+	return dm.searchNodesInternal(ctx, projectName, query, limit, offset)
+}
