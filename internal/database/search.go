@@ -20,8 +20,6 @@ type SearchStrategy interface {
 	Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error)
 }
 
-type defaultSearchStrategy struct{ dm *DBManager }
-
 // defaultSearchStrategy is the standard search implementation.
 // It delegates search requests to the internal search logic of DBManager.
 type defaultSearchStrategy struct{ dm *DBManager }
