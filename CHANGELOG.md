@@ -3,6 +3,18 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [0.1.1](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.1.0...v0.1.1) (2025-08-15)
+
+### 🧑‍💻 Code Refactoring
+
+* **releaserc:** remove GitHub plugin configuration for release comments ([7331b7a](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/7331b7afad890b4e8c364637cea018e61d4b88c9))
+
+### 🔁 Continuous Integration
+
+* **release:** configure semantic-release to skip PR comments/labels and add commit-analyzer ([7f21268](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/7f2126865dfae94ecddc62b63e3331cfab047109))
+* **release:** disable GitHub plugin release notes injection; no PR/issue interactions ([8cca84f](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/8cca84fd94a345adeddb19ce79febd3c67fbd3a6))
+* **release:** use .releaserc as canonical; disable GitHub PR interactions; remove duplicate .releaserc.json ([ef3426a](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/ef3426ae495171a15978ab918b087d9d8334432d))
+
 ## [0.1.0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.0.14...v0.1.0) (2025-08-15)
 
 ### 🍕 Features
