@@ -10,7 +10,8 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
-// getEntityObservations retrieves all observations for an entity
+// getEntityObservations retrieves all observations for a given entity in the specified project.
+// The returned observations are ordered by their database ID in ascending order.
 func (dm *DBManager) getEntityObservations(ctx context.Context, projectName string, entityName string) ([]string, error) {
 	done := metrics.TimeOp("db_get_entity_observations")
 	success := false
