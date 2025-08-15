@@ -153,16 +153,6 @@
       }
     ],
     [
-      "@semantic-release/github",
-      {
-        "addReleases": false,
-        "successComment": true,
-        "failComment": true,
-        "labels": true,
-        "releasedLabels": true
-      }
-    ],
-    [
       "@semantic-release/git",
       {
         "assets": [
