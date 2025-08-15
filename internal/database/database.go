@@ -201,12 +201,7 @@ func (dm *DBManager) buildFTSMatchExpr(raw string) string {
 	return q
 }
 
-// capFlags stores capability detection for a specific project/DB handle
-type capFlags struct {
-	checked    bool
-	vectorTopK bool
-	fts5       bool
-}
+// capFlags moved to capabilities.go
 
 // SetEmbeddingsProvider overrides the embeddings provider (primarily for tests)
 func (dm *DBManager) SetEmbeddingsProvider(p embeddings.Provider) {
