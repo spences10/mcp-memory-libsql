@@ -69,6 +69,8 @@ services:
       - type: bind
         source: ./data
         target: /data
+        bind:
+          create_host_path: true
     healthcheck:
       test: >
         CMD-SHELL

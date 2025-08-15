@@ -76,6 +76,7 @@ docker-rebuild:
 .PHONY: data
 data:
 	mkdir -p ./data ./data/projects
+	chmod -R 777 ./data
 
 # Run the docker image (SSE default)
 .PHONY: docker-run
@@ -142,6 +143,7 @@ docker-test: data
 	fi; \
 	# Wait for health (container health or metrics endpoint), up to 90s
 	@echo "Waiting for health (up to 90s)..."; \
+	@echo "Host data perms:"; ls -la ./data || true; \
 	for i in $$(seq 1 90); do \
 	  cid=$$(docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) ps -q memory 2>/dev/null || true); \
 	  if [ -n "$$cid" ]; then \

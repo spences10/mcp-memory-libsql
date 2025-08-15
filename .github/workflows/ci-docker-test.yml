@@ -69,3 +69,5 @@ jobs:
           PORT_SSE: ${{ env.PORT_SSE }}
           PORT_METRICS: ${{ env.PORT_METRICS }}
           PROFILES: ${{ env.PROFILES }}
+          # ensure world-writable data dir in CI for container user
+          UMASK: "000"
