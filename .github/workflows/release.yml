@@ -63,7 +63,7 @@ jobs:
 
       - name: Install semantic-release toolchain
         run: |
-          npm install -g semantic-release conventional-changelog-conventionalcommits @semantic-release/exec @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/release-notes-generator
+          npm install -g semantic-release conventional-changelog-conventionalcommits @semantic-release/commit-analyzer @semantic-release/exec @semantic-release/git @semantic-release/github @semantic-release/changelog @semantic-release/release-notes-generator
 
       - name: Release
         env:
