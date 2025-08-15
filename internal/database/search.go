@@ -22,6 +22,11 @@ type SearchStrategy interface {
 
 type defaultSearchStrategy struct{ dm *DBManager }
 
+// defaultSearchStrategy is the standard search implementation.
+// It delegates search requests to the internal search logic of DBManager.
+type defaultSearchStrategy struct{ dm *DBManager }
+
+// Search delegates the search operation to DBManager's internal search logic.
 func (s *defaultSearchStrategy) Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
 	return s.dm.searchNodesInternal(ctx, projectName, query, limit, offset)
 }
