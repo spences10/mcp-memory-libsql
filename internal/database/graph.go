@@ -10,7 +10,7 @@ import (
 	"github.com/ZanzyTHEbar/mcp-memory-libsql-go/internal/metrics"
 )
 
-// GetRecentEntities retrieves recently created entities
+// GetRecentEntities retrieves the most recently created entities up to limit.
 func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, limit int) ([]apptype.Entity, error) {
 	db, err := dm.getDB(projectName)
 	if err != nil {
@@ -59,7 +59,7 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, 
 	return entities, nil
 }
 
-// GetRelationsForEntities retrieves relations for a list of entities
+// GetRelationsForEntities returns all relations touching any of the provided entities.
 func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName string, entities []apptype.Entity) ([]apptype.Relation, error) {
 	done := metrics.TimeOp("db_get_relations_for_entities")
 	success := false
@@ -111,8 +111,7 @@ func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName st
 	return relations, nil
 }
 
-// GetNeighbors returns 1-hop neighbors for the given entity names.
-// direction: "out" (source->target), "in" (target<-source), or "both".
+// GetNeighbors returns 1-hop neighbors and the connecting relations for given names.
 func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names []string, direction string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
 	done := metrics.TimeOp("db_get_neighbors")
 	success := false
@@ -124,7 +123,6 @@ func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names
 	if err != nil {
 		return nil, nil, err
 	}
-	// Build direction filter
 	if direction == "" {
 		direction = "both"
 	}
@@ -142,7 +140,7 @@ func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names
             SELECT source, target, relation_type FROM relations
             WHERE target IN (%s)
         `, placeholders)
-	default: // both
+	default:
 		query = fmt.Sprintf(`
             SELECT source, target, relation_type FROM relations
             WHERE source IN (%s) OR target IN (%s)
@@ -184,7 +182,6 @@ func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	// Materialize entities
 	allNames := make([]string, 0, len(entitySet))
 	for n := range entitySet {
 		allNames = append(allNames, n)
@@ -197,7 +194,7 @@ func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names
 	return ents, rels, nil
 }
 
-// Walk expands from seed names up to maxDepth using BFS and returns visited entities and edges.
+// Walk traverses outward from seed entities up to maxDepth and returns the subgraph.
 func (dm *DBManager) Walk(ctx context.Context, projectName string, seeds []string, maxDepth int, direction string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
 	if maxDepth <= 0 {
 		maxDepth = 1
@@ -234,7 +231,6 @@ func (dm *DBManager) Walk(ctx context.Context, projectName string, seeds []strin
 			break
 		}
 	}
-	// materialize visited entities
 	namesList := make([]string, 0, len(visited))
 	for n := range visited {
 		namesList = append(namesList, n)
@@ -246,13 +242,11 @@ func (dm *DBManager) Walk(ctx context.Context, projectName string, seeds []strin
 	return ents, allRels, nil
 }
 
-// ShortestPath returns a shortest path as entities and relations using BFS edges.
-// Note: returns subgraph containing the path; if no path found, returns empty slices.
+// ShortestPath finds one shortest path (if any) between two entities and returns the path subgraph.
 func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, direction string) ([]apptype.Entity, []apptype.Relation, error) {
 	if from == "" || to == "" || from == to {
 		return []apptype.Entity{}, []apptype.Relation{}, nil
 	}
-	// BFS parents
 	parents := make(map[string]string)
 	visited := make(map[string]bool)
 	q := []string{from}
@@ -265,7 +259,6 @@ func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, di
 		if err != nil {
 			return nil, nil, err
 		}
-		// Build adjacency from rels by direction
 		next := make([]string, 0)
 		for _, r := range rels {
 			try := func(u, v string) {
@@ -296,7 +289,6 @@ func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, di
 	if !found {
 		return []apptype.Entity{}, []apptype.Relation{}, nil
 	}
-	// reconstruct path
 	pathNames := []string{to}
 	cur := to
 	for cur != from {
@@ -304,16 +296,13 @@ func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, di
 		pathNames = append(pathNames, p)
 		cur = p
 	}
-	// reverse to get from->to order
 	for i, j := 0, len(pathNames)-1; i < j; i, j = i+1, j-1 {
 		pathNames[i], pathNames[j] = pathNames[j], pathNames[i]
 	}
-	// materialize entities
 	ents, err := dm.GetEntities(ctx, projectName, pathNames)
 	if err != nil {
 		return nil, nil, err
 	}
-	// generate relation edges along path in requested direction
 	pathRels := make([]apptype.Relation, 0, len(pathNames)-1)
 	for i := 0; i+1 < len(pathNames); i++ {
 		pathRels = append(pathRels, apptype.Relation{From: pathNames[i], To: pathNames[i+1], RelationType: "path"})
@@ -321,17 +310,15 @@ func (dm *DBManager) ShortestPath(ctx context.Context, projectName, from, to, di
 	return ents, pathRels, nil
 }
 
-// ReadGraph retrieves recent entities and their relations
+// ReadGraph returns a recent subgraph snapshot with entities and their relations.
 func (dm *DBManager) ReadGraph(ctx context.Context, projectName string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
 	entities, err := dm.GetRecentEntities(ctx, projectName, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get recent entities: %w", err)
 	}
-
 	relations, err := dm.GetRelationsForEntities(ctx, projectName, entities)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get relations: %w", err)
 	}
-
 	return entities, relations, nil
 }
