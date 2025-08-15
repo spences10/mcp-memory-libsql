@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,128 +255,7 @@ func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
 // moved to relations.go
 
 // SearchSimilar performs vector similarity search
-func (dm *DBManager) SearchSimilar(ctx context.Context, projectName string, embedding []float32, limit int, offset int) ([]apptype.SearchResult, error) {
-	done := metrics.TimeOp("db_search_similar")
-	success := false
-	defer func() { done(success) }()
-	db, err := dm.getDB(projectName)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(embedding) == 0 {
-		return nil, fmt.Errorf("search embedding cannot be empty")
-	}
-
-	vectorString, err := dm.vectorToString(embedding)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert search embedding: %w", err)
-	}
-	zeroString := dm.vectorZeroString()
-
-	// Prefer vector_top_k if available; fallback to exact ORDER BY path
-	dm.capMu.RLock()
-	caps := dm.capsByProject[projectName]
-	dm.capMu.RUnlock()
-	useTopK := caps.vectorTopK
-
-	var rows *sql.Rows
-	if useTopK {
-		k := limit + offset
-		if k <= 0 {
-			k = limit
-		}
-		topK := `WITH vt AS (
-            SELECT id FROM vector_top_k('idx_entities_embedding', vector32(?), ?)
-        )
-        SELECT e.name, e.entity_type, e.embedding,
-               vector_distance_cos(e.embedding, vector32(?)) as distance
-        FROM vt JOIN entities e ON e.rowid = vt.id
-        WHERE e.embedding IS NOT NULL AND e.embedding != vector32(?)
-        ORDER BY distance ASC
-        LIMIT ? OFFSET ?`
-		stmt, perr := dm.getPreparedStmt(ctx, projectName, db, topK)
-		if perr != nil {
-			return nil, perr
-		}
-		rows, err = stmt.QueryContext(ctx, vectorString, k, vectorString, zeroString, limit, offset)
-		if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such function: vector_top_k") {
-			// downgrade capability and fall back
-			dm.capMu.Lock()
-			c := dm.capsByProject[projectName]
-			c.vectorTopK = false
-			dm.capsByProject[projectName] = c
-			dm.capMu.Unlock()
-			useTopK = false
-		} else if err != nil {
-			return nil, fmt.Errorf("failed ANN search: %w", err)
-		}
-	}
-	if !useTopK {
-		query := `SELECT e.name, e.entity_type, e.embedding,
-               vector_distance_cos(e.embedding, vector32(?)) as distance
-        FROM entities e
-        WHERE e.embedding IS NOT NULL
-        AND e.embedding != vector32(?)
-        ORDER BY distance ASC
-        LIMIT ? OFFSET ?`
-		stmt, perr := dm.getPreparedStmt(ctx, projectName, db, query)
-		if perr != nil {
-			return nil, perr
-		}
-		rows, err = stmt.QueryContext(ctx, vectorString, zeroString, limit, offset)
-	}
-	if err != nil {
-		// Structured error when vector functions unsupported
-		low := strings.ToLower(err.Error())
-		if strings.Contains(low, "no such function: vector_distance_cos") || strings.Contains(low, "no such function: vector32") {
-			return nil, fmt.Errorf("{\"error\":{\"code\":\"VECTOR_SEARCH_UNSUPPORTED\",\"message\":\"Vector search functions are unavailable in this libSQL build\"}}")
-		}
-		return nil, fmt.Errorf("failed to execute similarity search: %w", err)
-	}
-	defer rows.Close()
-
-	var searchResults []apptype.SearchResult
-	for rows.Next() {
-		var name, entityType string
-		var embeddingBytes []byte
-		var distance float64
-
-		if err := rows.Scan(&name, &entityType, &embeddingBytes, &distance); err != nil {
-			log.Printf("Warning: Failed to scan search result row: %v", err)
-			continue
-		}
-
-		observations, err := dm.getEntityObservations(ctx, projectName, name)
-		if err != nil {
-			log.Printf("Warning: Failed to get observations for entity %q: %v", name, err)
-			continue
-		}
-
-		vector, err := dm.ExtractVector(ctx, embeddingBytes)
-		if err != nil {
-			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
-			continue
-		}
-
-		searchResults = append(searchResults, apptype.SearchResult{
-			Entity: apptype.Entity{
-				Name:         name,
-				EntityType:   entityType,
-				Observations: observations,
-				Embedding:    vector,
-			},
-			Distance: distance,
-		})
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating search results: %w", err)
-	}
-
-	success = true
-	return searchResults, nil
-}
+// moved to search.go
 
 // getEntityObservations retrieves all observations for an entity
 // moved to entities_crud.go
@@ -691,66 +569,7 @@ func (dm *DBManager) SearchEntities(ctx context.Context, projectName string, que
 }
 
 // GetRecentEntities retrieves recently created entities
-func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, limit int) ([]apptype.Entity, error) {
-	done := metrics.TimeOp("db_recent_entities")
-	success := false
-	defer func() { done(success) }()
-	db, err := dm.getDB(projectName)
-	if err != nil {
-		return nil, err
-	}
-
-	if limit <= 0 {
-		limit = 10
-	}
-
-	stmt, err := dm.getPreparedStmt(ctx, projectName, db, "SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC, name DESC LIMIT ?")
-	if err != nil {
-		return nil, err
-	}
-	rows, err := stmt.QueryContext(ctx, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query recent entities: %w", err)
-	}
-	defer rows.Close()
-
-	var entities []apptype.Entity
-	for rows.Next() {
-		var name, entityType string
-		var embeddingBytes []byte
-
-		if err := rows.Scan(&name, &entityType, &embeddingBytes); err != nil {
-			log.Printf("Warning: Failed to scan recent entity row: %v", err)
-			continue
-		}
-
-		observations, err := dm.getEntityObservations(ctx, projectName, name)
-		if err != nil {
-			log.Printf("Warning: Failed to get observations for entity %q: %v", name, err)
-			continue
-		}
-
-		vector, err := dm.ExtractVector(ctx, embeddingBytes)
-		if err != nil {
-			log.Printf("Warning: Failed to extract vector for entity %q: %v", name, err)
-			continue
-		}
-
-		entities = append(entities, apptype.Entity{
-			Name:         name,
-			EntityType:   entityType,
-			Observations: observations,
-			Embedding:    vector,
-		})
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating recent entities: %w", err)
-	}
-
-	success = true
-	return entities, nil
-}
+// moved to graph.go
 
 // CreateRelations creates multiple relations between entities
 // moved to relations.go
