@@ -110,11 +110,12 @@ docker-run-multi: data
 		-e METRICS_PORT=$(PORT_METRICS) \
 		$(DOCKER_IMAGE) -transport sse -addr :$(PORT_SSE) -sse-endpoint /sse -projects-dir /data/projects
 
+
 # End-to-end docker test workflow
+## Silence command echoing for docker-test target while still printing our own echoes
+.SILENT: docker-test
 .PHONY: docker-test
 docker-test: data
-## Silence command echoing for this target while still printing our own echoes
-.SILENT: docker-test
 	@echo "Checking for existing image $(DOCKER_IMAGE)..."; \
 	if docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1; then \
 		echo "Found image $(DOCKER_IMAGE)"; \
