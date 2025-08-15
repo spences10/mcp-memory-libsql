@@ -163,7 +163,7 @@ docker-test: data
 	# Run integration tester against live SSE endpoint (increase timeout to 75s)
 	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 75s | tee integration-report.json; \
 	# Tear down only if we started the containers
-	if [ "$$started" -eq 1 ]; then \
+	if [ "$$started" = "1" ]; then \
 		echo "Stopping containers brought up by test..."; \
 		docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) down; \
 	else \
