@@ -188,5 +188,3 @@ func coerceToFloat32Slice(value interface{}) ([]float32, bool, error) {
 
 	return nil, false, nil
 }
-
-

@@ -35,5 +35,3 @@ func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db
 	dm.stmtMu.Unlock()
 	return stmt, nil
 }
-
-
