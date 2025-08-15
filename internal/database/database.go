@@ -360,9 +360,7 @@ func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db
 }
 
 // detectCapabilities probes presence of vector_top_k and records flags.
-func (dm *DBManager) detectCapabilitiesForProject(ctx context.Context, projectName string, db *sql.DB) {
-	// implemented in capabilities.go
-}
+// NOTE: implementation lives in capabilities.go
 
 // ensureFTSSchema creates FTS5 virtual table and triggers if supported
 func (dm *DBManager) ensureFTSSchema(ctx context.Context, db *sql.DB) error {
