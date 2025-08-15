@@ -52,9 +52,9 @@ jobs:
           HYBRID_VECTOR_WEIGHT=0.6
           HYBRID_RRF_K=60
           METRICS_PROMETHEUS=true
-          METRICS_PORT=:9090
+          METRICS_PORT=9090
           TRANSPORT=sse
-          PORT=:8080
+          PORT=8080
           SSE_ENDPOINT=/sse
           MULTI_PROJECT_AUTH_REQUIRED=false
           MULTI_PROJECT_AUTO_INIT_TOKEN=true

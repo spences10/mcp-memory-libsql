@@ -113,6 +113,8 @@ docker-run-multi: data
 # End-to-end docker test workflow
 .PHONY: docker-test
 docker-test: data
+## Silence command echoing for this target while still printing our own echoes
+.SILENT: docker-test
 	@echo "Checking for existing image $(DOCKER_IMAGE)..."; \
 	if docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1; then \
 		echo "Found image $(DOCKER_IMAGE)"; \
@@ -199,10 +201,10 @@ env-prod:
 	  echo "DB_CONN_MAX_LIFETIME_SEC=300"; \
 	  echo; \
 	  echo "METRICS_PROMETHEUS=true"; \
-	  echo "METRICS_PORT=:9090"; \
+	  echo "METRICS_PORT=9090"; \
 	  echo; \
 	  echo "TRANSPORT=sse"; \
-	  echo "PORT=:8080"; \
+	  echo "PORT=8080"; \
 	  echo "SSE_ENDPOINT=/sse"; \
 	  echo; \
 	  echo "# Multi-project auth toggles"; \
@@ -238,10 +240,10 @@ env-voyage:
 	  echo "EMBEDDING_DIMS=1024"; \
 	  echo "EMBEDDINGS_ADAPT_MODE=pad_or_truncate"; \
 	  echo "TRANSPORT=sse"; \
-	  echo "PORT=:8080"; \
+	  echo "PORT=8080"; \
 	  echo "SSE_ENDPOINT=/sse"; \
 	  echo "METRICS_PROMETHEUS=true"; \
-	  echo "METRICS_PORT=:9090"; \
+	  echo "METRICS_PORT=9090"; \
 	  echo "HYBRID_SEARCH=true"; \
 	} > .env.voyage
 
