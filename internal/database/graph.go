@@ -59,6 +59,58 @@ func (dm *DBManager) GetRecentEntities(ctx context.Context, projectName string, 
 	return entities, nil
 }
 
+// GetRelationsForEntities retrieves relations for a list of entities
+func (dm *DBManager) GetRelationsForEntities(ctx context.Context, projectName string, entities []apptype.Entity) ([]apptype.Relation, error) {
+	done := metrics.TimeOp("db_get_relations_for_entities")
+	success := false
+	defer func() { done(success) }()
+	db, err := dm.getDB(projectName)
+	if err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return []apptype.Relation{}, nil
+	}
+	entityNames := make([]string, len(entities))
+	for i, e := range entities {
+		entityNames[i] = e.Name
+	}
+	placeholders := strings.Repeat("?,", len(entityNames))
+	placeholders = placeholders[:len(placeholders)-1]
+	query := fmt.Sprintf(`
+		SELECT source, target, relation_type 
+		FROM relations 
+		WHERE source IN (%s) OR target IN (%s)
+	`, placeholders, placeholders)
+	args := make([]interface{}, len(entityNames)*2)
+	for i, name := range entityNames {
+		args[i] = name
+		args[i+len(entityNames)] = name
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query relations: %w", err)
+	}
+	defer rows.Close()
+	relations := make([]apptype.Relation, 0)
+	for rows.Next() {
+		var source, target, relationType string
+		if err := rows.Scan(&source, &target, &relationType); err != nil {
+			return nil, fmt.Errorf("failed to scan relation: %w", err)
+		}
+		relations = append(relations, apptype.Relation{
+			From:         source,
+			To:           target,
+			RelationType: relationType,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	success = true
+	return relations, nil
+}
+
 // GetNeighbors returns 1-hop neighbors for the given entity names.
 // direction: "out" (source->target), "in" (target<-source), or "both".
 func (dm *DBManager) GetNeighbors(ctx context.Context, projectName string, names []string, direction string, limit int) ([]apptype.Entity, []apptype.Relation, error) {
