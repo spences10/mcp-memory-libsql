@@ -3,6 +3,12 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [0.3.0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.2.0...v0.3.0) (2025-08-15)
+
+### 📝 Documentation
+
+* Add quick-start guide for pre-built GHCR images and update README sections ([6a1d9eb](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/commit/6a1d9eb239d97b9eec07b5ffeb290d5c9cef8357))
+
 ## [0.2.0](https://github.com/ZanzyTHEbar/mcp-memory-libsql-go/compare/v0.1.1...v0.2.0) (2025-08-15)
 
 ### 🐛 Bug Fixes
