@@ -21,7 +21,7 @@ ENV_FILE ?=
 ENV_FILE_ARG := $(if $(ENV_FILE),--env-file $(ENV_FILE),)
 PORT_SSE ?= 8080
 PORT_METRICS ?= 9090
-PROFILES ?= single
+PROFILES ?= memory
 PROFILE_FLAGS := $(foreach p,$(PROFILES),--profile $(p))
 
 # Default target
@@ -85,9 +85,12 @@ docker-run: docker-run-sse
 .PHONY: docker-run-sse
 docker-run-sse: data
 	docker run --rm -it $(ENV_FILE_ARG) \
-		-p $(PORT_SSE):8080 -p $(PORT_METRICS):9090 \
+		-p $(PORT_SSE):$(PORT_SSE) -p $(PORT_METRICS):$(PORT_METRICS) \
 		-v $(shell pwd)/data:/data \
-		$(DOCKER_IMAGE) -transport sse -addr :8080 -sse-endpoint /sse
+		-e MODE=$(MODE) \
+		-e PORT=$(PORT_SSE) \
+		-e METRICS_PORT=$(PORT_METRICS) \
+		$(DOCKER_IMAGE) -transport sse -addr :$(PORT_SSE) -sse-endpoint /sse
 
 # Run the docker image with stdio transport
 .PHONY: docker-run-stdio
@@ -100,9 +103,12 @@ docker-run-stdio: data
 .PHONY: docker-run-multi
 docker-run-multi: data
 	docker run --rm -it $(ENV_FILE_ARG) \
-		-p $(PORT_SSE):8080 -p $(PORT_METRICS):9090 \
+		-p $(PORT_SSE):$(PORT_SSE) -p $(PORT_METRICS):$(PORT_METRICS) \
 		-v $(shell pwd)/data:/data \
-		$(DOCKER_IMAGE) -transport sse -addr :8080 -sse-endpoint /sse -projects-dir /data/projects
+		-e MODE=multi \
+		-e PORT=$(PORT_SSE) \
+		-e METRICS_PORT=$(PORT_METRICS) \
+		$(DOCKER_IMAGE) -transport sse -addr :$(PORT_SSE) -sse-endpoint /sse -projects-dir /data/projects
 
 # Compose helpers
 .PHONY: compose-up compose-down compose-logs compose-ps
@@ -198,22 +204,23 @@ voyage-up: docker-build data env-voyage
 voyage-down: env-voyage
 	docker compose --env-file .env.voyage --profile voyageai down $(if $(WITH_VOLUMES),-v,)
 
+
 # End-to-end docker test workflow
 .PHONY: docker-test
 docker-test: docker-build data
-	# 1) Stand up (compose single profile)
-	docker compose --profile single up --build -d
+	# 1) Stand up (compose with configured profiles)
+	docker compose $(PROFILE_FLAGS) up --build -d
 	# 2) Wait for health
 	@echo "Waiting for health..."; \
 	for i in $$(seq 1 30); do \
-	  if curl -fsS http://127.0.0.1:9090/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
+	  if curl -fsS http://127.0.0.1:$(PORT_METRICS)/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
 	  sleep 1; \
 	  if [ $$i -eq 30 ]; then echo "Health check timed out"; exit 1; fi; \
 	done
 	# 3) Run integration tester against live SSE endpoint
-	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:8080/sse -project default -timeout 45s | tee integration-report.json
+	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 45s | tee integration-report.json
 	# 4) Tear down
-	docker compose down
+	docker compose $(PROFILE_FLAGS) down
 	# 5) Audit/report
 	@echo "--- Integration Test Report (integration-report.json) ---"; \
 	cat integration-report.json | jq '.' || cat integration-report.json
