@@ -4,36 +4,33 @@ set -euo pipefail
 # entrypoint.sh - choose runtime args based on MODE env var
 # MODE: single | multi | voyageai
 
+# If the container was started with explicit args (CMD/compose command),
+# honor those and exec the binary directly with provided args. This lets
+# docker-compose's `command:` override behavior work as expected.
+if [ "$#" -gt 0 ]; then
+  exec /usr/local/bin/mcp-memory-libsql-go "$@"
+fi
+
 MODE=${MODE:-single}
 PORT=${PORT:-8080}
 METRICS_PORT=${METRICS_PORT:-9090}
 PROJECTS_DIR=${PROJECTS_DIR:-/data/projects}
 
-case "$MODE" in
-single)
-    exec /usr/local/bin/mcp-memory-libsql-go -transport ${TRANSPORT:-sse} -addr :${PORT} -sse-endpoint ${SSE_ENDPOINT:-/sse}
-    ;;
-multi)
-    exec /usr/local/bin/mcp-memory-libsql-go -transport ${TRANSPORT:-sse} -addr :${PORT} -sse-endpoint ${SSE_ENDPOINT:-/sse} -projects-dir ${PROJECTS_DIR}
-    ;;
-voyageai)
-    # voyageai uses same multi-project flags but expects VOYAGE env vars to be present
-# Extract common command line arguments
-COMMON_ARGS="-transport ${TRANSPORT:-sse} -addr :${PORT} -sse-endpoint ${SSE_ENDPOINT:-/sse}"
+COMMON_ARGS=("-transport" "${TRANSPORT:-sse}" "-addr" ":${PORT}" "-sse-endpoint" "${SSE_ENDPOINT:-/sse}")
 
 case "$MODE" in
-single)
-    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS
+  single)
+    exec /usr/local/bin/mcp-memory-libsql-go "${COMMON_ARGS[@]}"
     ;;
-multi)
-    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS -projects-dir ${PROJECTS_DIR}
+  multi)
+    exec /usr/local/bin/mcp-memory-libsql-go "${COMMON_ARGS[@]}" -projects-dir "${PROJECTS_DIR}"
     ;;
-voyageai)
+  voyageai)
     # voyageai uses same multi-project flags but expects VOYAGE env vars to be present
-    exec /usr/local/bin/mcp-memory-libsql-go $COMMON_ARGS -projects-dir ${PROJECTS_DIR}
+    exec /usr/local/bin/mcp-memory-libsql-go "${COMMON_ARGS[@]}" -projects-dir "${PROJECTS_DIR}"
     ;;
-*)
-    echo "Unknown MODE='$MODE' - expected single|multi|voyageai" >&2
+  *)
+    echo "Unknown MODE='${MODE}' - expected single|multi|voyageai" >&2
     exit 2
     ;;
 esac
