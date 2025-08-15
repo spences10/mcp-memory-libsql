@@ -58,7 +58,7 @@ services:
         "-transport",
         "${TRANSPORT:-sse}",
         "-addr",
-        "-:${PORT:-8080}",
+        ":${PORT:-8080}",
         "-sse-endpoint",
         "${SSE_ENDPOINT:-/sse}",
       ]
