@@ -110,6 +110,53 @@ docker-run-multi: data
 		-e METRICS_PORT=$(PORT_METRICS) \
 		$(DOCKER_IMAGE) -transport sse -addr :$(PORT_SSE) -sse-endpoint /sse -projects-dir /data/projects
 
+# End-to-end docker test workflow
+.PHONY: docker-test
+docker-test: data
+	@echo "Checking for existing image $(DOCKER_IMAGE)..."; \
+	if docker image inspect $(DOCKER_IMAGE) >/dev/null 2>&1; then \
+		echo "Found image $(DOCKER_IMAGE)"; \
+	else \
+		echo "Image $(DOCKER_IMAGE) not found; building..."; \
+		$(MAKE) docker-build; \
+	fi; \
+	# Check for existing container for service 'memory'
+	cid=$$(docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) ps -q memory 2>/dev/null || true); \
+	started=0; \
+	if [ -n "$$cid" ]; then \
+		running=$$(docker inspect -f '{{.State.Running}}' $$cid 2>/dev/null || echo false); \
+		if [ "$$running" = "true" ]; then \
+			echo "Service 'memory' already running (container $$cid)"; \
+		else \
+			echo "Service 'memory' container exists but not running; starting..."; \
+			docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) up -d memory; \
+			started=1; \
+		fi; \
+	else \
+		echo "No existing 'memory' container; starting..."; \
+		docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) up -d memory; \
+		started=1; \
+	fi; \
+	# Wait for health
+	@echo "Waiting for health..."; \
+	for i in $$(seq 1 30); do \
+	  if curl -fsS http://127.0.0.1:$(PORT_METRICS)/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
+	  sleep 1; \
+	  if [ $$i -eq 30 ]; then echo "Health check timed out"; exit 1; fi; \
+	done; \
+	# Run integration tester against live SSE endpoint
+	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 45s | tee integration-report.json; \
+	# Tear down only if we started the containers
+	if [ "$$started" -eq 1 ]; then \
+		echo "Stopping containers brought up by test..."; \
+		docker compose $(ENV_FILE_ARG) $(PROFILE_FLAGS) down; \
+	else \
+		echo "Leaving existing containers running"; \
+	fi; \
+	# Audit/report
+	@echo "--- Integration Test Report (integration-report.json) ---"; \
+	cat integration-report.json | jq '.' || cat integration-report.json
+
 # Compose helpers
 .PHONY: compose-up compose-down compose-logs compose-ps
 compose-up:
@@ -204,26 +251,6 @@ voyage-up: docker-build data env-voyage
 voyage-down: env-voyage
 	docker compose --env-file .env.voyage --profile voyageai down $(if $(WITH_VOLUMES),-v,)
 
-
-# End-to-end docker test workflow
-.PHONY: docker-test
-docker-test: docker-build data
-	# 1) Stand up (compose with configured profiles)
-	docker compose $(PROFILE_FLAGS) up --build -d
-	# 2) Wait for health
-	@echo "Waiting for health..."; \
-	for i in $$(seq 1 30); do \
-	  if curl -fsS http://127.0.0.1:$(PORT_METRICS)/healthz >/dev/null 2>&1; then echo "Healthy"; break; fi; \
-	  sleep 1; \
-	  if [ $$i -eq 30 ]; then echo "Health check timed out"; exit 1; fi; \
-	done
-	# 3) Run integration tester against live SSE endpoint
-	go run $(INTEGRATION_TESTER) -sse-url http://127.0.0.1:$(PORT_SSE)/sse -project default -timeout 45s | tee integration-report.json
-	# 4) Tear down
-	docker compose $(PROFILE_FLAGS) down
-	# 5) Audit/report
-	@echo "--- Integration Test Report (integration-report.json) ---"; \
-	cat integration-report.json | jq '.' || cat integration-report.json
 
 # Clean build artifacts
 .PHONY: clean
