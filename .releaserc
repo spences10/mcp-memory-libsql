@@ -155,7 +155,7 @@
     [
       "@semantic-release/github",
       {
-        "addReleases": "bottom",
+        "addReleases": false,
         "successComment": false,
         "failComment": false,
         "labels": false,
