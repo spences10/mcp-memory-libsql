@@ -4,15 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,10 +329,7 @@ func (dm *DBManager) ValidateProjectAuth(projectName string, providedToken strin
 }
 
 // getPreparedStmt returns or prepares and caches a statement for the given project DB
-func (dm *DBManager) getPreparedStmt(ctx context.Context, projectName string, db *sql.DB, sqlText string) (*sql.Stmt, error) {
-	// implemented in stmt_cache.go
-	return nil, fmt.Errorf("getPreparedStmt stub should not be called")
-}
+// implemented in stmt_cache.go
 
 // detectCapabilities probes presence of vector_top_k and records flags.
 // NOTE: implementation lives in capabilities.go
