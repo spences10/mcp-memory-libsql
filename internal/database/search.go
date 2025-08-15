@@ -65,22 +65,26 @@ func newHybridSearchStrategy(dm *DBManager) *hybridSearchStrategy {
 // It first retrieves results from a text-based search and a vector-based search (if available).
 // The results from both searches are then combined using the Reciprocal Rank Fusion (RRF) algorithm.
 // RRF assigns a score to each result based on its rank in each list, using the formula:
-//   RRF_score = sum_{lists} 1 / (k + rank)
+//
+//	RRF_score = sum_{lists} 1 / (k + rank)
+//
 // where k is a constant (configurable via s.rrfK), and rank is the position of the result in each list.
 // This approach rewards results that appear near the top of any list, and allows for flexible weighting
 // between text and vector search results (via s.textWeight and s.vectorWeight).
 //
 // Parameters:
-//   ctx         - context for cancellation and deadlines
-//   projectName - the name of the project to search within
-//   query       - the search query (must be a non-empty string)
-//   limit       - maximum number of results to return
-//   offset      - number of results to skip (for pagination)
+//
+//	ctx         - context for cancellation and deadlines
+//	projectName - the name of the project to search within
+//	query       - the search query (must be a non-empty string)
+//	limit       - maximum number of results to return
+//	offset      - number of results to skip (for pagination)
 //
 // Returns:
-//   []apptype.Entity   - the combined, ranked list of entities
-//   []apptype.Relation - relations associated with the entities (if any)
-//   error              - error, if any occurred during search
+//
+//	[]apptype.Entity   - the combined, ranked list of entities
+//	[]apptype.Relation - relations associated with the entities (if any)
+//	error              - error, if any occurred during search
 func (s *hybridSearchStrategy) Search(ctx context.Context, projectName string, query interface{}, limit int, offset int) ([]apptype.Entity, []apptype.Relation, error) {
 	qStr, ok := query.(string)
 	if !ok || strings.TrimSpace(qStr) == "" {
