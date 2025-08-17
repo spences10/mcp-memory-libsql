@@ -45,18 +45,18 @@
     "release": "pnpm run build && changeset publish"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.7",
-    "@modelcontextprotocol/sdk": "1.15.0",
-    "@types/node": "^22.15.21",
-    "dotenv": "^17.0.0"
+    "@libsql/client": "^0.15.11",
+    "@modelcontextprotocol/sdk": "1.17.3",
+    "@types/node": "^24.3.0",
+    "dotenv": "^17.2.1"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.4",
+    "@changesets/cli": "^2.29.6",
     "@types/jest": "^30.0.0",
-    "jest": "^30.0.0",
-    "ts-jest": "^29.3.4",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.2"
   },
   "volta": {
     "node": "22.17.1"

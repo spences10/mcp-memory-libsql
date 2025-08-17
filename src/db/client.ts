@@ -61,13 +61,32 @@ export class DatabaseManager {
 		return `[${sanitized_numbers.join(', ')}]`;
 	}
 
+	// Helper to convert various buffer types to Uint8Array
+	private buffer_to_uint8_array(buffer: any): Uint8Array {
+		if (buffer instanceof Uint8Array) {
+			return buffer;
+		}
+		if (buffer instanceof ArrayBuffer) {
+			return new Uint8Array(buffer);
+		}
+		if (typeof buffer === 'string') {
+			// Handle base64 or other string formats if needed
+			throw new Error('String buffer conversion not implemented');
+		}
+		throw new Error(`Unsupported buffer type: ${typeof buffer}`);
+	}
+
 	// Extract vector from binary format
 	private async extract_vector(
-		embedding: Uint8Array,
-	): Promise<number[]> {
+		embedding: string | number | bigint | ArrayBuffer | Uint8Array | null,
+	): Promise<number[] | undefined> {
+		if (!embedding) {
+			return undefined;
+		}
+		const uint8Array = this.buffer_to_uint8_array(embedding);
 		const result = await this.client.execute({
 			sql: 'SELECT vector_extract(?) as vec',
-			args: [embedding],
+			args: [uint8Array],
 		});
 		const vecStr = result.rows[0].vec as string;
 		return JSON.parse(vecStr);
@@ -212,7 +231,7 @@ export class DatabaseManager {
 					});
 
 					const entity_embedding = await this.extract_vector(
-						row.embedding as Uint8Array,
+						row.embedding,
 					);
 
 					search_results.push({
@@ -266,7 +285,7 @@ export class DatabaseManager {
 
 		const embedding = entity_result.rows[0].embedding
 			? await this.extract_vector(
-					entity_result.rows[0].embedding as Uint8Array,
+					entity_result.rows[0].embedding,
 			  )
 			: undefined;
 
@@ -300,7 +319,7 @@ export class DatabaseManager {
 			});
 
 			const embedding = row.embedding
-				? await this.extract_vector(row.embedding as Uint8Array)
+				? await this.extract_vector(row.embedding)
 				: undefined;
 
 			entities.push({
@@ -331,7 +350,7 @@ export class DatabaseManager {
 			});
 
 			const embedding = row.embedding
-				? await this.extract_vector(row.embedding as Uint8Array)
+				? await this.extract_vector(row.embedding)
 				: undefined;
 
 			entities.push({
