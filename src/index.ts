@@ -1,13 +1,9 @@
 #!/usr/bin/env node
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-	CallToolRequest,
-	CallToolRequestSchema,
-	ErrorCode,
-	ListToolsRequestSchema,
-	McpError,
-} from '@modelcontextprotocol/sdk/types.js';
+
+import { McpServer } from 'tmcp';
+import { ValibotJsonSchemaAdapter } from '@tmcp/adapter-valibot';
+import { StdioTransport } from '@tmcp/transport-stdio';
+import * as v from 'valibot';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -15,358 +11,325 @@ import { DatabaseManager } from './db/client.js';
 import { get_database_config } from './db/config.js';
 import { Relation } from './types/index.js';
 
+// Get version from package.json
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const pkg = JSON.parse(
+const package_json = JSON.parse(
 	readFileSync(join(__dirname, '..', 'package.json'), 'utf8'),
 );
-const { name, version } = pkg;
+const { name, version } = package_json;
 
-class LibSqlMemoryServer {
-	private server: Server;
-	private db!: DatabaseManager;
+// Define schemas
+const CreateEntitiesSchema = v.object({
+	entities: v.array(
+		v.object({
+			name: v.string(),
+			entityType: v.string(),
+			observations: v.array(v.string()),
+			embedding: v.optional(v.array(v.number())),
+		}),
+	),
+});
 
-	private constructor() {
-		this.server = new Server(
-			{ name, version },
-			{
-				capabilities: {
-					tools: {
-						create_entities: {},
-						search_nodes: {},
-						read_graph: {},
-						create_relations: {},
-						delete_entity: {},
-						delete_relation: {},
-					},
-				},
-			},
-		);
+const SearchNodesSchema = v.object({
+	query: v.union([v.string(), v.array(v.number())]),
+});
 
-		// Error handling
-		this.server.onerror = (error: Error) =>
-			console.error('[MCP Error]', error);
-		process.on('SIGINT', async () => {
-			await this.db?.close();
-			await this.server.close();
-			process.exit(0);
-		});
-	}
+const CreateRelationsSchema = v.object({
+	relations: v.array(
+		v.object({
+			source: v.string(),
+			target: v.string(),
+			type: v.string(),
+		}),
+	),
+});
 
-	public static async create(): Promise<LibSqlMemoryServer> {
-		const instance = new LibSqlMemoryServer();
-		const config = get_database_config();
-		instance.db = await DatabaseManager.get_instance(config);
-		instance.setup_tool_handlers();
-		return instance;
-	}
+const DeleteEntitySchema = v.object({
+	name: v.string(),
+});
 
-	private setup_tool_handlers() {
-		this.server.setRequestHandler(
-			ListToolsRequestSchema,
-			async () => ({
-				tools: [
-					{
-						name: 'create_entities',
-						description:
-							'Create new entities with observations and optional embeddings',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								entities: {
-									type: 'array',
-									items: {
-										type: 'object',
-										properties: {
-											name: { type: 'string' },
-											entityType: { type: 'string' },
-											observations: {
-												type: 'array',
-												items: { type: 'string' },
-											},
-											embedding: {
-												type: 'array',
-												items: { type: 'number' },
-												description:
-													'Optional vector embedding for similarity search',
-											},
-										},
-										required: ['name', 'entityType', 'observations'],
-									},
-								},
-							},
-							required: ['entities'],
+const DeleteRelationSchema = v.object({
+	source: v.string(),
+	target: v.string(),
+	type: v.string(),
+});
+
+function setupTools(server: McpServer<any>, db: DatabaseManager) {
+	// Tool: Create Entities
+	server.tool<typeof CreateEntitiesSchema>(
+		{
+			name: 'create_entities',
+			description: 'Create new entities with observations and optional embeddings',
+			schema: CreateEntitiesSchema,
+		},
+		async ({ entities }) => {
+			try {
+				await db.create_entities(entities);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: `Successfully processed ${entities.length} entities (created new or updated existing)`,
 						},
-					},
-					{
-						name: 'search_nodes',
-						description:
-							'Search for entities and their relations using text or vector similarity',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								query: {
-									oneOf: [
-										{
-											type: 'string',
-											description: 'Text search query',
-										},
-										{
-											type: 'array',
-											items: { type: 'number' },
-											description: 'Vector for similarity search',
-										},
-									],
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
 								},
-							},
-							required: ['query'],
+								null,
+								2,
+							),
 						},
-					},
-					{
-						name: 'read_graph',
-						description: 'Get recent entities and their relations',
-						inputSchema: {
-							type: 'object',
-							properties: {},
-							required: [],
+					],
+					isError: true,
+				};
+			}
+		},
+	);
+
+	// Tool: Search Nodes
+	server.tool<typeof SearchNodesSchema>(
+		{
+			name: 'search_nodes',
+			description: 'Search for entities and their relations using text or vector similarity',
+			schema: SearchNodesSchema,
+		},
+		async ({ query }) => {
+			try {
+				const result = await db.search_nodes(query);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(result, null, 2),
 						},
-					},
-					{
-						name: 'create_relations',
-						description: 'Create relations between entities',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								relations: {
-									type: 'array',
-									items: {
-										type: 'object',
-										properties: {
-											source: { type: 'string' },
-											target: { type: 'string' },
-											type: { type: 'string' },
-										},
-										required: ['source', 'target', 'type'],
-									},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
 								},
-							},
-							required: ['relations'],
+								null,
+								2,
+							),
 						},
-					},
-					{
-						name: 'delete_entity',
-						description:
-							'Delete an entity and all its associated data (observations and relations)',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								name: {
-									type: 'string',
-									description: 'Name of the entity to delete',
-								},
-							},
-							required: ['name'],
+					],
+					isError: true,
+				};
+			}
+		},
+	);
+
+	// Tool: Read Graph
+	server.tool(
+		{
+			name: 'read_graph',
+			description: 'Get recent entities and their relations',
+		},
+		async () => {
+			try {
+				const result = await db.read_graph();
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(result, null, 2),
 						},
-					},
-					{
-						name: 'delete_relation',
-						description:
-							'Delete a specific relation between entities',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								source: {
-									type: 'string',
-									description: 'Source entity name',
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
 								},
-								target: {
-									type: 'string',
-									description: 'Target entity name',
-								},
-								type: {
-									type: 'string',
-									description: 'Type of relation',
-								},
-							},
-							required: ['source', 'target', 'type'],
+								null,
+								2,
+							),
 						},
-					},
-				],
-			}),
-		);
+					],
+					isError: true,
+				};
+			}
+		},
+	);
 
-		this.server.setRequestHandler(
-			CallToolRequestSchema,
-			async (request: CallToolRequest) => {
-				try {
-					switch (request.params.name) {
-						case 'create_entities': {
-							const entities = request.params.arguments
-								?.entities as Array<{
-								name: string;
-								entityType: string;
-								observations: string[];
-								embedding?: number[];
-							}>;
-							if (!entities) {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Missing entities parameter',
-								);
-							}
-							await this.db.create_entities(entities);
-							return {
-								content: [
-									{
-										type: 'text',
-										text: `Successfully processed ${entities.length} entities (created new or updated existing)`,
-									},
-								],
-							};
-						}
+	// Tool: Create Relations
+	server.tool<typeof CreateRelationsSchema>(
+		{
+			name: 'create_relations',
+			description: 'Create relations between entities',
+			schema: CreateRelationsSchema,
+		},
+		async ({ relations }) => {
+			try {
+				// Convert to internal Relation type
+				const internalRelations: Relation[] = relations.map((r) => ({
+					from: r.source,
+					to: r.target,
+					relationType: r.type,
+				}));
+				await db.create_relations(internalRelations);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: `Created ${relations.length} relations`,
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
+								},
+								null,
+								2,
+							),
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
 
-						case 'search_nodes': {
-							const query = request.params.arguments?.query;
-							if (query === undefined || query === null) {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Missing query parameter',
-								);
-							}
-							// Validate query type
-							if (
-								!(typeof query === 'string' || Array.isArray(query))
-							) {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Query must be either a string or number array',
-								);
-							}
-							const result = await this.db.search_nodes(query);
-							return {
-								content: [
-									{
-										type: 'text',
-										text: JSON.stringify(result, null, 2),
-									},
-								],
-							};
-						}
+	// Tool: Delete Entity
+	server.tool<typeof DeleteEntitySchema>(
+		{
+			name: 'delete_entity',
+			description: 'Delete an entity and all its associated data (observations and relations)',
+			schema: DeleteEntitySchema,
+		},
+		async ({ name }) => {
+			try {
+				await db.delete_entity(name);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: `Successfully deleted entity "${name}" and its associated data`,
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
+								},
+								null,
+								2,
+							),
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
 
-						case 'read_graph': {
-							const result = await this.db.read_graph();
-							return {
-								content: [
-									{
-										type: 'text',
-										text: JSON.stringify(result, null, 2),
-									},
-								],
-							};
-						}
-
-						case 'create_relations': {
-							const relations = request.params.arguments
-								?.relations as Array<{
-								source: string;
-								target: string;
-								type: string;
-							}>;
-							if (!relations) {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Missing relations parameter',
-								);
-							}
-							// Convert to internal Relation type
-							const internalRelations: Relation[] = relations.map(
-								(r) => ({
-									from: r.source,
-									to: r.target,
-									relationType: r.type,
-								}),
-							);
-							await this.db.create_relations(internalRelations);
-							return {
-								content: [
-									{
-										type: 'text',
-										text: `Created ${relations.length} relations`,
-									},
-								],
-							};
-						}
-
-						case 'delete_entity': {
-							const name = request.params.arguments?.name;
-							if (!name || typeof name !== 'string') {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Missing or invalid entity name',
-								);
-							}
-							await this.db.delete_entity(name);
-							return {
-								content: [
-									{
-										type: 'text',
-										text: `Successfully deleted entity "${name}" and its associated data`,
-									},
-								],
-							};
-						}
-
-						case 'delete_relation': {
-							const { source, target, type } =
-								request.params.arguments || {};
-							if (
-								!source ||
-								!target ||
-								!type ||
-								typeof source !== 'string' ||
-								typeof target !== 'string' ||
-								typeof type !== 'string'
-							) {
-								throw new McpError(
-									ErrorCode.InvalidParams,
-									'Missing or invalid relation parameters',
-								);
-							}
-							await this.db.delete_relation(source, target, type);
-							return {
-								content: [
-									{
-										type: 'text',
-										text: `Successfully deleted relation: ${source} -> ${target} (${type})`,
-									},
-								],
-							};
-						}
-
-						default:
-							throw new McpError(
-								ErrorCode.MethodNotFound,
-								`Unknown tool: ${request.params.name}`,
-							);
-					}
-				} catch (error) {
-					if (error instanceof McpError) throw error;
-					throw new McpError(
-						ErrorCode.InternalError,
-						error instanceof Error ? error.message : String(error),
-					);
-				}
-			},
-		);
-	}
-
-	async run() {
-		const transport = new StdioServerTransport();
-		await this.server.connect(transport);
-		console.error('LibSQL Memory MCP server running on stdio');
-	}
+	// Tool: Delete Relation
+	server.tool<typeof DeleteRelationSchema>(
+		{
+			name: 'delete_relation',
+			description: 'Delete a specific relation between entities',
+			schema: DeleteRelationSchema,
+		},
+		async ({ source, target, type }) => {
+			try {
+				await db.delete_relation(source, target, type);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: `Successfully deleted relation: ${source} -> ${target} (${type})`,
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: JSON.stringify(
+								{
+									error: 'internal_error',
+									message: error instanceof Error ? error.message : 'Unknown error',
+								},
+								null,
+								2,
+							),
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
 }
 
-LibSqlMemoryServer.create()
-	.then((server) => server.run())
-	.catch(console.error);
+// Start the server
+async function main() {
+	// Initialize database
+	const config = get_database_config();
+	const db = await DatabaseManager.get_instance(config);
+
+	// Create tmcp server with Valibot adapter
+	const adapter = new ValibotJsonSchemaAdapter();
+	const server = new McpServer<any>(
+		{
+			name,
+			version,
+			description: 'LibSQL-based persistent memory tool for MCP',
+		},
+		{
+			adapter,
+			capabilities: {
+				tools: { listChanged: true },
+			},
+		},
+	);
+
+	// Setup tool handlers
+	setupTools(server, db);
+
+	// Error handling and graceful shutdown
+	process.on('SIGINT', async () => {
+		await db?.close();
+		process.exit(0);
+	});
+
+	const transport = new StdioTransport(server);
+	transport.listen();
+	console.error('LibSQL Memory MCP server running on stdio');
+}
+
+main().catch(console.error);
