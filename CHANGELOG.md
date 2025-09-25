@@ -1,5 +1,11 @@
 # mcp-memory-libsql
 
+## 0.0.15
+
+### Patch Changes
+
+- 8e8f6ea: use tmcp in place of mcp sdk
+
 ## 0.0.14
 
 ### Patch Changes
