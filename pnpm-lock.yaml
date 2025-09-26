@@ -16,7 +16,7 @@ importers:
         version: 0.1.4(tmcp@1.13.0(typescript@5.9.2))(valibot@1.1.0(typescript@5.9.2))
       '@tmcp/transport-stdio':
         specifier: ^0.3.0
-        version: 0.3.0(tmcp@1.13.0(typescript@5.9.2))
+        version: 0.3.1(tmcp@1.13.0(typescript@5.9.2))
       '@types/node':
         specifier: ^24.5.2
         version: 24.5.2
@@ -538,10 +538,10 @@ packages:
       tmcp: ^1.10.2
       valibot: ^1.1.0
 
-  '@tmcp/transport-stdio@0.3.0':
-    resolution: {integrity: sha512-xkEk7oOjaJpgtu8L65ESSg9tgKrBCHj5KqRQbhMCM66QlD/lgjghfv1ljkJJ0TZEcq70Li5qe5k3qhthBdSiQQ==}
+  '@tmcp/transport-stdio@0.3.1':
+    resolution: {integrity: sha512-r+eiHa2URw5+lBMRI0t4D84LfcWHam3DsTog/lPZSALIjlYxlFUfAaJ8dgh5gdQnmXiFJfE9hzmN0gIrB6+Lzw==}
     peerDependencies:
-      tmcp: ^1.13.0
+      tmcp: ^1.14.0
 
   '@tsconfig/node10@1.0.11':
     resolution: {integrity: sha512-DcRjDCujK/kCk/cUe8Xz8ZSpm8mS3mNNpta+jGCA6USEDfktlNvm1+IuZ9eTcDbNk41BHwpHHeW+N1lKCz4zOw==}
@@ -1355,6 +1355,7 @@ packages:
 
   libsql@0.5.22:
     resolution: {integrity: sha512-NscWthMQt7fpU8lqd7LXMvT9pi+KhhmTHAJWUB/Lj6MWa0MKFv0F2V4C6WKKpjCVZl0VwcDz4nOI3CyaT1DDiA==}
+    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   lines-and-columns@1.2.4:
@@ -2605,7 +2606,7 @@ snapshots:
       tmcp: 1.13.0(typescript@5.9.2)
       valibot: 1.1.0(typescript@5.9.2)
 
-  '@tmcp/transport-stdio@0.3.0(tmcp@1.13.0(typescript@5.9.2))':
+  '@tmcp/transport-stdio@0.3.1(tmcp@1.13.0(typescript@5.9.2))':
     dependencies:
       tmcp: 1.13.0(typescript@5.9.2)
 
