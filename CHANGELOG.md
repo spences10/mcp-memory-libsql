@@ -1,5 +1,12 @@
 # mcp-memory-libsql
 
+## 0.0.16
+
+### Patch Changes
+
+- bb71f9c: drop vector search improve text search with relevance
+  ranking
+
 ## 0.0.15
 
 ### Patch Changes
