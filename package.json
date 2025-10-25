@@ -1,7 +1,7 @@
 {
   "name": "mcp-memory-libsql",
   "version": "0.0.15",
-  "description": "LibSQL-based persistent memory tool for MCP",
+  "description": "LibSQL-based persistent memory tool for MCP with optimized text search",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -25,13 +25,12 @@
   "keywords": [
     "mcp",
     "memory",
-    "vector",
     "libsql",
     "knowledge-graph",
     "database",
-    "vector-search",
-    "semantic-search",
-    "knowledge-management"
+    "text-search",
+    "knowledge-management",
+    "relevance-ranking"
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",

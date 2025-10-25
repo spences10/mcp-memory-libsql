@@ -1,9 +1,8 @@
 # mcp-memory-libsql
 
 A high-performance, persistent memory system for the Model Context
-Protocol (MCP) powered by libSQL. This server provides vector search
-capabilities and efficient knowledge storage using libSQL as the
-backing store.
+Protocol (MCP) powered by libSQL with optimized text search for LLM
+context efficiency.
 
 <a href="https://glama.ai/mcp/servers/22lg4lq768">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/22lg4lq768/badge" alt="Glama badge" />
@@ -11,9 +10,10 @@ backing store.
 
 ## Features
 
-- 🚀 High-performance vector search using libSQL
+- 🚀 High-performance text search with relevance ranking
 - 💾 Persistent storage of entities and relations
-- 🔍 Semantic search capabilities
+- 🔍 Flexible text search with fuzzy matching
+- 🎯 Context-optimized for LLM efficiency
 - 🔄 Knowledge graph management
 - 🌐 Compatible with local and remote libSQL databases
 - 🔒 Secure token-based authentication for remote databases
@@ -99,13 +99,14 @@ in the current directory.
 
 ## API
 
-The server implements the standard MCP memory interface with
-additional vector search capabilities:
+The server implements the standard MCP memory interface with optimized
+text search:
 
 - Entity Management
-  - Create/Update entities with embeddings
+  - Create/Update entities with observations
   - Delete entities
-  - Search entities by similarity
+  - Search entities by text with relevance ranking
+  - Explore entity relationships
 - Relation Management
   - Create relations between entities
   - Delete relations
@@ -115,10 +116,10 @@ additional vector search capabilities:
 
 The server uses a libSQL database with the following schema:
 
-- Entities table: Stores entity information and embeddings
+- Entities table: Stores entity information with timestamps
+- Observations table: Stores entity observations
 - Relations table: Stores relationships between entities
-- Vector search capabilities implemented using libSQL's built-in
-  vector operations
+- Text search with relevance ranking (name > type > observation)
 
 ## Development
 

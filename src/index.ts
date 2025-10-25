@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { McpServer } from 'tmcp';
 import { ValibotJsonSchemaAdapter } from '@tmcp/adapter-valibot';
 import { StdioTransport } from '@tmcp/transport-stdio';
-import * as v from 'valibot';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
+import { McpServer } from 'tmcp';
 import { fileURLToPath } from 'url';
+import * as v from 'valibot';
 import { DatabaseManager } from './db/client.js';
 import { get_database_config } from './db/config.js';
 import { Relation } from './types/index.js';
@@ -26,13 +26,13 @@ const CreateEntitiesSchema = v.object({
 			name: v.string(),
 			entityType: v.string(),
 			observations: v.array(v.string()),
-			embedding: v.optional(v.array(v.number())),
 		}),
 	),
 });
 
 const SearchNodesSchema = v.object({
-	query: v.union([v.string(), v.array(v.number())]),
+	query: v.string(),
+	limit: v.optional(v.number()),
 });
 
 const CreateRelationsSchema = v.object({
@@ -60,7 +60,7 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 	server.tool<typeof CreateEntitiesSchema>(
 		{
 			name: 'create_entities',
-			description: 'Create new entities with observations and optional embeddings',
+			description: 'Create new entities with observations',
 			schema: CreateEntitiesSchema,
 		},
 		async ({ entities }) => {
@@ -82,7 +82,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,
@@ -99,12 +102,13 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 	server.tool<typeof SearchNodesSchema>(
 		{
 			name: 'search_nodes',
-			description: 'Search for entities and their relations using text or vector similarity',
+			description:
+				'Search for entities and their relations using text search with relevance ranking',
 			schema: SearchNodesSchema,
 		},
-		async ({ query }) => {
+		async ({ query, limit }) => {
 			try {
-				const result = await db.search_nodes(query);
+				const result = await db.search_nodes(query, limit);
 				return {
 					content: [
 						{
@@ -121,7 +125,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,
@@ -159,7 +166,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,
@@ -204,7 +214,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,
@@ -221,7 +234,8 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 	server.tool<typeof DeleteEntitySchema>(
 		{
 			name: 'delete_entity',
-			description: 'Delete an entity and all its associated data (observations and relations)',
+			description:
+				'Delete an entity and all its associated data (observations and relations)',
 			schema: DeleteEntitySchema,
 		},
 		async ({ name }) => {
@@ -243,7 +257,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,
@@ -282,7 +299,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 							text: JSON.stringify(
 								{
 									error: 'internal_error',
-									message: error instanceof Error ? error.message : 'Unknown error',
+									message:
+										error instanceof Error
+											? error.message
+											: 'Unknown error',
 								},
 								null,
 								2,

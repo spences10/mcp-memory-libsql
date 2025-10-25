@@ -1,5 +1,5 @@
 import { createClient } from '@libsql/client';
-import { Entity, Relation, SearchResult } from '../types/index.js';
+import { Entity, Relation } from '../types/index.js';
 
 // Types for configuration
 interface DatabaseConfig {
@@ -31,74 +31,12 @@ export class DatabaseManager {
 		return DatabaseManager.instance;
 	}
 
-	// Convert array to vector string representation with validation
-	private array_to_vector_string(
-		numbers: number[] | undefined,
-	): string {
-		// If no embedding provided, create a default zero vector
-		if (!numbers || !Array.isArray(numbers)) {
-			return '[0.0, 0.0, 0.0, 0.0]';
-		}
-
-		// Validate vector dimensions match schema (4 dimensions for testing)
-		if (numbers.length !== 4) {
-			throw new Error(
-				`Vector must have exactly 4 dimensions, got ${numbers.length}. Please provide a 4D vector or omit for default zero vector.`,
-			);
-		}
-
-		// Validate all elements are numbers and convert NaN/Infinity to 0
-		const sanitized_numbers = numbers.map((n) => {
-			if (typeof n !== 'number' || isNaN(n) || !isFinite(n)) {
-				console.warn(
-					`Invalid vector value detected, using 0.0 instead of: ${n}`,
-				);
-				return 0.0;
-			}
-			return n;
-		});
-
-		return `[${sanitized_numbers.join(', ')}]`;
-	}
-
-	// Helper to convert various buffer types to Uint8Array
-	private buffer_to_uint8_array(buffer: any): Uint8Array {
-		if (buffer instanceof Uint8Array) {
-			return buffer;
-		}
-		if (buffer instanceof ArrayBuffer) {
-			return new Uint8Array(buffer);
-		}
-		if (typeof buffer === 'string') {
-			// Handle base64 or other string formats if needed
-			throw new Error('String buffer conversion not implemented');
-		}
-		throw new Error(`Unsupported buffer type: ${typeof buffer}`);
-	}
-
-	// Extract vector from binary format
-	private async extract_vector(
-		embedding: string | number | bigint | ArrayBuffer | Uint8Array | null,
-	): Promise<number[] | undefined> {
-		if (!embedding) {
-			return undefined;
-		}
-		const uint8Array = this.buffer_to_uint8_array(embedding);
-		const result = await this.client.execute({
-			sql: 'SELECT vector_extract(?) as vec',
-			args: [uint8Array],
-		});
-		const vecStr = result.rows[0].vec as string;
-		return JSON.parse(vecStr);
-	}
-
 	// Entity operations
 	async create_entities(
 		entities: Array<{
 			name: string;
 			entityType: string;
 			observations: string[];
-			embedding?: number[];
 		}>,
 	): Promise<void> {
 		try {
@@ -145,23 +83,19 @@ export class DatabaseManager {
 
 				// Start a transaction
 				const txn = await this.client.transaction('write');
-				
-				try {
-					const vector_string = this.array_to_vector_string(
-						entity.embedding,
-					);
 
+				try {
 					// First try to update
 					const result = await txn.execute({
-						sql: 'UPDATE entities SET entity_type = ?, embedding = vector32(?) WHERE name = ?',
-						args: [entity.entityType, vector_string, entity.name],
+						sql: 'UPDATE entities SET entity_type = ? WHERE name = ?',
+						args: [entity.entityType, entity.name],
 					});
 
 					// If no rows affected, do insert
 					if (result.rowsAffected === 0) {
 						await txn.execute({
-							sql: 'INSERT INTO entities (name, entity_type, embedding) VALUES (?, ?, vector32(?))',
-							args: [entity.name, entity.entityType, vector_string],
+							sql: 'INSERT INTO entities (name, entity_type) VALUES (?, ?)',
+							args: [entity.name, entity.entityType],
 						});
 					}
 
@@ -195,82 +129,9 @@ export class DatabaseManager {
 		}
 	}
 
-	async search_similar(
-		embedding: number[],
-		limit: number = 5,
-	): Promise<SearchResult[]> {
-		try {
-			// Validate input vector
-			if (!Array.isArray(embedding)) {
-				throw new Error('Search embedding must be an array');
-			}
-
-			const vector_string = this.array_to_vector_string(embedding);
-
-			// Use vector_top_k to find similar entities, excluding zero vectors
-			const results = await this.client.execute({
-				sql: `
-					SELECT e.name, e.entity_type, e.embedding,
-						   vector_distance_cos(e.embedding, vector32(?)) as distance
-					FROM entities e
-					WHERE e.embedding IS NOT NULL
-					AND e.embedding != vector32('[0.0, 0.0, 0.0, 0.0]')
-					ORDER BY distance ASC
-					LIMIT ?
-				`,
-				args: [vector_string, limit],
-			});
-
-			// Get observations for each entity
-			const search_results: SearchResult[] = [];
-			for (const row of results.rows) {
-				try {
-					const observations = await this.client.execute({
-						sql: 'SELECT content FROM observations WHERE entity_name = ?',
-						args: [row.name],
-					});
-
-					const entity_embedding = await this.extract_vector(
-						row.embedding,
-					);
-
-					search_results.push({
-						entity: {
-							name: row.name as string,
-							entityType: row.entity_type as string,
-							observations: observations.rows.map(
-								(obs) => obs.content as string,
-							),
-							embedding: entity_embedding,
-						},
-						distance: row.distance as number,
-					});
-				} catch (error) {
-					console.warn(
-						`Failed to process search result for entity "${
-							row.name
-						}": ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-					// Continue processing other results
-					continue;
-				}
-			}
-
-			return search_results;
-		} catch (error) {
-			throw new Error(
-				`Similarity search failed: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-		}
-	}
-
 	async get_entity(name: string): Promise<Entity> {
 		const entity_result = await this.client.execute({
-			sql: 'SELECT name, entity_type, embedding FROM entities WHERE name = ?',
+			sql: 'SELECT name, entity_type FROM entities WHERE name = ?',
 			args: [name],
 		});
 
@@ -283,31 +144,49 @@ export class DatabaseManager {
 			args: [name],
 		});
 
-		const embedding = entity_result.rows[0].embedding
-			? await this.extract_vector(
-					entity_result.rows[0].embedding,
-			  )
-			: undefined;
-
 		return {
 			name: entity_result.rows[0].name as string,
 			entityType: entity_result.rows[0].entity_type as string,
 			observations: observations_result.rows.map(
 				(row) => row.content as string,
 			),
-			embedding,
 		};
 	}
 
-	async search_entities(query: string): Promise<Entity[]> {
+	async search_entities(
+		query: string,
+		limit: number = 10,
+	): Promise<Entity[]> {
+		// Normalize query for fuzzy matching
+		const normalized_query = `%${query.replace(/[\s_-]+/g, '%')}%`;
+
 		const results = await this.client.execute({
 			sql: `
-        SELECT DISTINCT e.name, e.entity_type, e.embedding
+        SELECT DISTINCT
+          e.name,
+          e.entity_type,
+          e.created_at,
+          CASE
+            WHEN e.name LIKE ? COLLATE NOCASE THEN 3
+            WHEN e.entity_type LIKE ? COLLATE NOCASE THEN 2
+            ELSE 1
+          END as relevance_score
         FROM entities e
         LEFT JOIN observations o ON e.name = o.entity_name
-        WHERE e.name LIKE ? OR e.entity_type LIKE ? OR o.content LIKE ?
+        WHERE e.name LIKE ? COLLATE NOCASE
+           OR e.entity_type LIKE ? COLLATE NOCASE
+           OR o.content LIKE ? COLLATE NOCASE
+        ORDER BY relevance_score DESC, e.created_at DESC
+        LIMIT ?
       `,
-			args: [`%${query}%`, `%${query}%`, `%${query}%`],
+			args: [
+				normalized_query,
+				normalized_query,
+				normalized_query,
+				normalized_query,
+				normalized_query,
+				limit > 50 ? 50 : limit, // Cap at 50
+			],
 		});
 
 		const entities: Entity[] = [];
@@ -318,17 +197,12 @@ export class DatabaseManager {
 				args: [name],
 			});
 
-			const embedding = row.embedding
-				? await this.extract_vector(row.embedding)
-				: undefined;
-
 			entities.push({
 				name,
 				entityType: row.entity_type as string,
 				observations: observations.rows.map(
 					(obs) => obs.content as string,
 				),
-				embedding,
 			});
 		}
 
@@ -336,9 +210,12 @@ export class DatabaseManager {
 	}
 
 	async get_recent_entities(limit = 10): Promise<Entity[]> {
+		// Cap limit at 50 to prevent context overload
+		const safe_limit = limit > 50 ? 50 : limit;
+
 		const results = await this.client.execute({
-			sql: 'SELECT name, entity_type, embedding FROM entities ORDER BY created_at DESC LIMIT ?',
-			args: [limit],
+			sql: 'SELECT name, entity_type FROM entities ORDER BY created_at DESC LIMIT ?',
+			args: [safe_limit],
 		});
 
 		const entities: Entity[] = [];
@@ -349,17 +226,12 @@ export class DatabaseManager {
 				args: [name],
 			});
 
-			const embedding = row.embedding
-				? await this.extract_vector(row.embedding)
-				: undefined;
-
 			entities.push({
 				name,
 				entityType: row.entity_type as string,
 				observations: observations.rows.map(
 					(obs) => obs.content as string,
 				),
-				embedding,
 			});
 		}
 
@@ -493,30 +365,20 @@ export class DatabaseManager {
 	}
 
 	async search_nodes(
-		query: string | number[],
+		query: string,
+		limit?: number,
 	): Promise<{ entities: Entity[]; relations: Relation[] }> {
 		try {
-			let entities: Entity[];
-
-			if (Array.isArray(query)) {
-				// Validate vector query
-				if (!query.every((n) => typeof n === 'number')) {
-					throw new Error('Vector query must contain only numbers');
-				}
-				// Vector similarity search
-				const results = await this.search_similar(query);
-				entities = results.map((r) => r.entity);
-			} else {
-				// Validate text query
-				if (typeof query !== 'string') {
-					throw new Error('Text query must be a string');
-				}
-				if (query.trim() === '') {
-					throw new Error('Text query cannot be empty');
-				}
-				// Text-based search
-				entities = await this.search_entities(query);
+			// Validate text query
+			if (typeof query !== 'string') {
+				throw new Error('Text query must be a string');
 			}
+			if (query.trim() === '') {
+				throw new Error('Text query cannot be empty');
+			}
+
+			// Text-based search with optional limit
+			const entities = await this.search_entities(query, limit);
 
 			// If no entities found, return empty result
 			if (entities.length === 0) {
@@ -548,7 +410,6 @@ export class DatabaseManager {
 				CREATE TABLE IF NOT EXISTS entities (
 					name TEXT PRIMARY KEY,
 					entity_type TEXT NOT NULL,
-					embedding F32_BLOB(4), -- 4-dimension vector for testing
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 				)
 			`);
@@ -592,10 +453,6 @@ export class DatabaseManager {
 					},
 					{
 						sql: 'CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target)',
-						args: [],
-					},
-					{
-						sql: 'CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding))',
 						args: [],
 					},
 				],

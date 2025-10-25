@@ -3,7 +3,6 @@ export const schema = [
 	`CREATE TABLE IF NOT EXISTS entities (
     name TEXT PRIMARY KEY,
     entity_type TEXT NOT NULL,
-    embedding F32_BLOB(4), -- 4 dimensions for testing
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`,
 
@@ -32,7 +31,4 @@ export const schema = [
 	`CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_name)`,
 	`CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source)`,
 	`CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target)`,
-
-	// Create vector index for similarity search
-	`CREATE INDEX IF NOT EXISTS idx_entities_embedding ON entities(libsql_vector_idx(embedding))`,
 ];
