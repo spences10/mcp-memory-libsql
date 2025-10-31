@@ -49,7 +49,7 @@
     "@tmcp/transport-stdio": "^0.4.0",
     "@types/node": "^24.9.2",
     "dotenv": "^17.2.3",
-    "tmcp": "^1.16.0",
+    "tmcp": "^1.16.1",
     "valibot": "^1.1.0"
   },
   "devDependencies": {
