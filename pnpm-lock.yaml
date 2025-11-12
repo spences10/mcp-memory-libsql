@@ -13,10 +13,10 @@ importers:
         version: 0.15.15
       '@tmcp/adapter-valibot':
         specifier: ^0.1.4
-        version: 0.1.4(tmcp@1.16.1(typescript@5.9.3))(valibot@1.1.0(typescript@5.9.3))
+        version: 0.1.4(tmcp@1.17.0(typescript@5.9.3))(valibot@1.1.0(typescript@5.9.3))
       '@tmcp/transport-stdio':
         specifier: ^0.4.0
-        version: 0.4.0(tmcp@1.16.1(typescript@5.9.3))
+        version: 0.4.0(tmcp@1.17.0(typescript@5.9.3))
       '@types/node':
         specifier: ^24.9.2
         version: 24.9.2
@@ -25,7 +25,7 @@ importers:
         version: 17.2.3
       tmcp:
         specifier: ^1.16.1
-        version: 1.16.1(typescript@5.9.3)
+        version: 1.17.0(typescript@5.9.3)
       valibot:
         specifier: ^1.1.0
         version: 1.1.0(typescript@5.9.3)
@@ -1361,6 +1361,7 @@ packages:
 
   libsql@0.5.22:
     resolution: {integrity: sha512-NscWthMQt7fpU8lqd7LXMvT9pi+KhhmTHAJWUB/Lj6MWa0MKFv0F2V4C6WKKpjCVZl0VwcDz4nOI3CyaT1DDiA==}
+    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   lines-and-columns@1.2.4:
@@ -1716,8 +1717,8 @@ packages:
     resolution: {integrity: sha512-cAGWPIyOHU6zlmg88jwm7VRyXnMN7iV68OGAbYDk/Mh/xC/pzVPlQtY6ngoIH/5/tciuhGfvESU8GrHrcxD56w==}
     engines: {node: '>=8'}
 
-  tmcp@1.16.1:
-    resolution: {integrity: sha512-pmqdFMfYi8e57p8bzpIkEtTt6GfAXGpub8rwySgo1yEEQogTpGdXFjGbISeS0SKrYN/MnIsHN6nj8gPjmAc+EQ==}
+  tmcp@1.17.0:
+    resolution: {integrity: sha512-56gMkHGYxgxHRcJuyD4RVKf74Vj01tsu9tZ6YZEX0eUTqcE1qEWafzEzUFyHqRvpQtDAkD2kxDwpMOtTgdJyOg==}
 
   tmpl@1.0.5:
     resolution: {integrity: sha512-3f0uOEAQwIqGuWW2MVzYg8fV/QNnc/IpuJNG837rLuczAaLVHslWHZQj4IGiEl5Hs3kkbhwL9Ab7Hrsmuj+Smw==}
@@ -1808,8 +1809,8 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
-  uri-template-matcher@1.1.1:
-    resolution: {integrity: sha512-ooMjzxaqlquLZZU0Y+Ol+RAp5xav3oJ3qc3gO585QFmB9iX88ip8pflaCKKtkwPd40ro2noB8yQG2OhFddmddg==}
+  uri-template-matcher@1.1.2:
+    resolution: {integrity: sha512-uZc1h12jdO3m/R77SfTEOuo6VbMhgWznaawKpBjRGSJb7i91x5PgI37NQJtG+Cerxkk0yr1pylBY2qG1kQ+aEQ==}
 
   v8-compile-cache-lib@3.0.1:
     resolution: {integrity: sha512-wa7YjyUGfNZngI/vtK0UHAN+lgDCxBPCylVXGp0zu59Fz5aiGtNXaq3DhIov063MorB+VfufLh3JlF2KdTK3xg==}
@@ -2615,16 +2616,16 @@ snapshots:
 
   '@standard-schema/spec@1.0.0': {}
 
-  '@tmcp/adapter-valibot@0.1.4(tmcp@1.16.1(typescript@5.9.3))(valibot@1.1.0(typescript@5.9.3))':
+  '@tmcp/adapter-valibot@0.1.4(tmcp@1.17.0(typescript@5.9.3))(valibot@1.1.0(typescript@5.9.3))':
     dependencies:
       '@standard-schema/spec': 1.0.0
       '@valibot/to-json-schema': 1.3.0(valibot@1.1.0(typescript@5.9.3))
-      tmcp: 1.16.1(typescript@5.9.3)
+      tmcp: 1.17.0(typescript@5.9.3)
       valibot: 1.1.0(typescript@5.9.3)
 
-  '@tmcp/transport-stdio@0.4.0(tmcp@1.16.1(typescript@5.9.3))':
+  '@tmcp/transport-stdio@0.4.0(tmcp@1.17.0(typescript@5.9.3))':
     dependencies:
-      tmcp: 1.16.1(typescript@5.9.3)
+      tmcp: 1.17.0(typescript@5.9.3)
 
   '@tsconfig/node10@1.0.11': {}
 
@@ -3895,12 +3896,12 @@ snapshots:
       glob: 7.2.3
       minimatch: 3.1.2
 
-  tmcp@1.16.1(typescript@5.9.3):
+  tmcp@1.17.0(typescript@5.9.3):
     dependencies:
       '@standard-schema/spec': 1.0.0
       json-rpc-2.0: 1.7.1
       sqids: 0.3.0
-      uri-template-matcher: 1.1.1
+      uri-template-matcher: 1.1.2
       valibot: 1.1.0(typescript@5.9.3)
     transitivePeerDependencies:
       - typescript
@@ -3997,7 +3998,7 @@ snapshots:
       escalade: 3.2.0
       picocolors: 1.1.1
 
-  uri-template-matcher@1.1.1: {}
+  uri-template-matcher@1.1.2: {}
 
   v8-compile-cache-lib@3.0.1: {}
 
