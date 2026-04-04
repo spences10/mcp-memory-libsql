@@ -1,5 +1,13 @@
 # mcp-memory-libsql
 
+## 0.0.17
+
+### Patch Changes
+
+- 2ec6666: Migrate build to vite-plus, add vitest tests, replace prettier with oxc, use node: imports
+- b56aab1: Security: sanitize inputs, add length limits, annotate destructive
+  tools, fix tsconfig for TS6
+
 ## 0.0.16
 
 ### Patch Changes
