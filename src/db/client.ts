@@ -19,7 +19,7 @@ interface DatabaseConfig {
  * Strips control characters and common injection markers
  * while preserving normal content.
  */
-function sanitize_input(input: string): string {
+export function sanitize_input(input: string): string {
 	return (
 		input
 			// Strip non-printable control chars (except newline, tab)
