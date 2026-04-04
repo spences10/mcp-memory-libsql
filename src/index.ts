@@ -19,40 +19,49 @@ const package_json = JSON.parse(
 );
 const { name, version } = package_json;
 
-// Define schemas
+// Define schemas with length constraints
 const CreateEntitiesSchema = v.object({
-	entities: v.array(
-		v.object({
-			name: v.string(),
-			entityType: v.string(),
-			observations: v.array(v.string()),
-		}),
+	entities: v.pipe(
+		v.array(
+			v.object({
+				name: v.pipe(v.string(), v.maxLength(256)),
+				entityType: v.pipe(v.string(), v.maxLength(256)),
+				observations: v.pipe(
+					v.array(v.pipe(v.string(), v.maxLength(4096))),
+					v.maxLength(100),
+				),
+			}),
+		),
+		v.maxLength(50),
 	),
 });
 
 const SearchNodesSchema = v.object({
-	query: v.string(),
-	limit: v.optional(v.number()),
+	query: v.pipe(v.string(), v.maxLength(512)),
+	limit: v.optional(v.pipe(v.number(), v.maxValue(50))),
 });
 
 const CreateRelationsSchema = v.object({
-	relations: v.array(
-		v.object({
-			source: v.string(),
-			target: v.string(),
-			type: v.string(),
-		}),
+	relations: v.pipe(
+		v.array(
+			v.object({
+				source: v.pipe(v.string(), v.maxLength(256)),
+				target: v.pipe(v.string(), v.maxLength(256)),
+				type: v.pipe(v.string(), v.maxLength(256)),
+			}),
+		),
+		v.maxLength(100),
 	),
 });
 
 const DeleteEntitySchema = v.object({
-	name: v.string(),
+	name: v.pipe(v.string(), v.maxLength(256)),
 });
 
 const DeleteRelationSchema = v.object({
-	source: v.string(),
-	target: v.string(),
-	type: v.string(),
+	source: v.pipe(v.string(), v.maxLength(256)),
+	target: v.pipe(v.string(), v.maxLength(256)),
+	type: v.pipe(v.string(), v.maxLength(256)),
 });
 
 function setupTools(server: McpServer<any>, db: DatabaseManager) {
@@ -62,6 +71,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 			name: 'create_entities',
 			description: 'Create new entities with observations',
 			schema: CreateEntitiesSchema,
+			annotations: {
+				readOnlyHint: false,
+				idempotentHint: true,
+			},
 		},
 		async ({ entities }) => {
 			try {
@@ -105,6 +118,9 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 			description:
 				'Search for entities and their relations using text search with relevance ranking',
 			schema: SearchNodesSchema,
+			annotations: {
+				readOnlyHint: true,
+			},
 		},
 		async ({ query, limit }) => {
 			try {
@@ -146,6 +162,9 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 		{
 			name: 'read_graph',
 			description: 'Get recent entities and their relations',
+			annotations: {
+				readOnlyHint: true,
+			},
 		},
 		async () => {
 			try {
@@ -188,6 +207,10 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 			name: 'create_relations',
 			description: 'Create relations between entities',
 			schema: CreateRelationsSchema,
+			annotations: {
+				readOnlyHint: false,
+				idempotentHint: false,
+			},
 		},
 		async ({ relations }) => {
 			try {
@@ -235,8 +258,13 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 		{
 			name: 'delete_entity',
 			description:
-				'Delete an entity and all its associated data (observations and relations)',
+				'Delete an entity and all its associated data (observations and relations). This is a destructive operation that cannot be undone.',
 			schema: DeleteEntitySchema,
+			annotations: {
+				destructiveHint: true,
+				readOnlyHint: false,
+				idempotentHint: true,
+			},
 		},
 		async ({ name }) => {
 			try {
@@ -277,8 +305,14 @@ function setupTools(server: McpServer<any>, db: DatabaseManager) {
 	server.tool<typeof DeleteRelationSchema>(
 		{
 			name: 'delete_relation',
-			description: 'Delete a specific relation between entities',
+			description:
+				'Delete a specific relation between entities. This is a destructive operation that cannot be undone.',
 			schema: DeleteRelationSchema,
+			annotations: {
+				destructiveHint: true,
+				readOnlyHint: false,
+				idempotentHint: true,
+			},
 		},
 		async ({ source, target, type }) => {
 			try {

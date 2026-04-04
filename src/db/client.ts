@@ -1,10 +1,33 @@
 import { createClient } from '@libsql/client';
 import { Entity, Relation } from '../types/index.js';
 
+// Input limits
+const MAX_ENTITY_NAME_LENGTH = 256;
+const MAX_ENTITY_TYPE_LENGTH = 256;
+const MAX_OBSERVATION_LENGTH = 4096;
+const MAX_OBSERVATIONS_PER_ENTITY = 100;
+const MAX_RELATION_TYPE_LENGTH = 256;
+
 // Types for configuration
 interface DatabaseConfig {
 	url: string;
 	authToken?: string;
+}
+
+/**
+ * Sanitize a string to mitigate prompt injection.
+ * Strips control characters and common injection markers
+ * while preserving normal content.
+ */
+function sanitize_input(input: string): string {
+	return (
+		input
+			// Strip non-printable control chars (except newline, tab)
+			.replace(/[^\P{C}\n\t]/gu, '')
+			// Collapse excessive whitespace/newlines
+			.replace(/\n{3,}/g, '\n\n')
+			.trim()
+	);
 }
 
 export class DatabaseManager {
@@ -41,7 +64,7 @@ export class DatabaseManager {
 	): Promise<void> {
 		try {
 			for (const entity of entities) {
-				// Validate entity name
+				// Validate and sanitize entity name
 				if (
 					!entity.name ||
 					typeof entity.name !== 'string' ||
@@ -49,15 +72,31 @@ export class DatabaseManager {
 				) {
 					throw new Error('Entity name must be a non-empty string');
 				}
+				const safe_name = sanitize_input(entity.name).slice(
+					0,
+					MAX_ENTITY_NAME_LENGTH,
+				);
+				if (safe_name === '') {
+					throw new Error('Entity name is empty after sanitization');
+				}
 
-				// Validate entity type
+				// Validate and sanitize entity type
 				if (
 					!entity.entityType ||
 					typeof entity.entityType !== 'string' ||
 					entity.entityType.trim() === ''
 				) {
 					throw new Error(
-						`Invalid entity type for entity "${entity.name}"`,
+						`Invalid entity type for entity "${safe_name}"`,
+					);
+				}
+				const safe_type = sanitize_input(entity.entityType).slice(
+					0,
+					MAX_ENTITY_TYPE_LENGTH,
+				);
+				if (safe_type === '') {
+					throw new Error(
+						`Entity type is empty after sanitization for entity "${safe_name}"`,
 					);
 				}
 
@@ -67,19 +106,36 @@ export class DatabaseManager {
 					entity.observations.length === 0
 				) {
 					throw new Error(
-						`Entity "${entity.name}" must have at least one observation`,
+						`Entity "${safe_name}" must have at least one observation`,
 					);
 				}
 
 				if (
-					!entity.observations.every(
-						(obs) => typeof obs === 'string' && obs.trim() !== '',
-					)
+					entity.observations.length > MAX_OBSERVATIONS_PER_ENTITY
 				) {
 					throw new Error(
-						`Entity "${entity.name}" has invalid observations. All observations must be non-empty strings`,
+						`Entity "${safe_name}" exceeds maximum of ${MAX_OBSERVATIONS_PER_ENTITY} observations`,
 					);
 				}
+
+				// Sanitize observations and validate
+				const safe_observations = entity.observations.map((obs) => {
+					if (typeof obs !== 'string' || obs.trim() === '') {
+						throw new Error(
+							`Entity "${safe_name}" has invalid observations. All observations must be non-empty strings`,
+						);
+					}
+					const sanitized = sanitize_input(obs).slice(
+						0,
+						MAX_OBSERVATION_LENGTH,
+					);
+					if (sanitized === '') {
+						throw new Error(
+							`Entity "${safe_name}" has an observation that is empty after sanitization`,
+						);
+					}
+					return sanitized;
+				});
 
 				// Start a transaction
 				const txn = await this.client.transaction('write');
@@ -88,28 +144,28 @@ export class DatabaseManager {
 					// First try to update
 					const result = await txn.execute({
 						sql: 'UPDATE entities SET entity_type = ? WHERE name = ?',
-						args: [entity.entityType, entity.name],
+						args: [safe_type, safe_name],
 					});
 
 					// If no rows affected, do insert
 					if (result.rowsAffected === 0) {
 						await txn.execute({
 							sql: 'INSERT INTO entities (name, entity_type) VALUES (?, ?)',
-							args: [entity.name, entity.entityType],
+							args: [safe_name, safe_type],
 						});
 					}
 
 					// Clear old observations
 					await txn.execute({
 						sql: 'DELETE FROM observations WHERE entity_name = ?',
-						args: [entity.name],
+						args: [safe_name],
 					});
 
 					// Add new observations
-					for (const observation of entity.observations) {
+					for (const observation of safe_observations) {
 						await txn.execute({
 							sql: 'INSERT INTO observations (entity_name, content) VALUES (?, ?)',
-							args: [entity.name, observation],
+							args: [safe_name, observation],
 						});
 					}
 
@@ -243,11 +299,32 @@ export class DatabaseManager {
 		try {
 			if (relations.length === 0) return;
 
-			// Prepare batch statements for all relations
-			const batch_statements = relations.map((relation) => ({
-				sql: 'INSERT INTO relations (source, target, relation_type) VALUES (?, ?, ?)',
-				args: [relation.from, relation.to, relation.relationType],
-			}));
+			// Sanitize and validate relation inputs
+			const batch_statements = relations.map((relation) => {
+				const safe_from = sanitize_input(relation.from).slice(
+					0,
+					MAX_ENTITY_NAME_LENGTH,
+				);
+				const safe_to = sanitize_input(relation.to).slice(
+					0,
+					MAX_ENTITY_NAME_LENGTH,
+				);
+				const safe_type = sanitize_input(relation.relationType).slice(
+					0,
+					MAX_RELATION_TYPE_LENGTH,
+				);
+
+				if (!safe_from || !safe_to || !safe_type) {
+					throw new Error(
+						'Relation source, target, and type must be non-empty strings',
+					);
+				}
+
+				return {
+					sql: 'INSERT INTO relations (source, target, relation_type) VALUES (?, ?, ?)',
+					args: [safe_from, safe_to, safe_type],
+				};
+			});
 
 			// Execute all inserts in a single batch transaction
 			await this.client.batch(batch_statements, 'write');
@@ -358,9 +435,8 @@ export class DatabaseManager {
 		relations: Relation[];
 	}> {
 		const recent_entities = await this.get_recent_entities();
-		const relations = await this.get_relations_for_entities(
-			recent_entities,
-		);
+		const relations =
+			await this.get_relations_for_entities(recent_entities);
 		return { entities: recent_entities, relations };
 	}
 
@@ -385,9 +461,8 @@ export class DatabaseManager {
 				return { entities: [], relations: [] };
 			}
 
-			const relations = await this.get_relations_for_entities(
-				entities,
-			);
+			const relations =
+				await this.get_relations_for_entities(entities);
 			return { entities, relations };
 		} catch (error) {
 			throw new Error(
