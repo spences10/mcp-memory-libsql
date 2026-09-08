@@ -46,7 +46,7 @@
     "release": "pnpm run build && changeset publish"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.2",
+    "@libsql/client": "^0.18.0",
     "@tmcp/adapter-valibot": "^0.1.5",
     "@tmcp/transport-stdio": "^0.4.2",
     "dotenv": "^17.4.0",
