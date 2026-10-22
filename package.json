@@ -57,7 +57,7 @@
     "@changesets/cli": "^2.30.0",
     "@types/node": "^25.5.2",
     "typescript": "^6.0.2",
-    "vite-plus": "^0.1.15",
+    "vite-plus": "^1.0.0",
     "vitest": "^4.1.2"
   },
   "volta": {
